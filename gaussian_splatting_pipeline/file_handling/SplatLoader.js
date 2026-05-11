@@ -1,6 +1,6 @@
-import { vec3 } from 'glm';
+import { vec3 } from '../lib/glm.js';
 
-import { Node } from 'engine/core.js';
+import { Node } from '../engine/core.js';
 
 import { parseSplats } from './parseSplats.js';
 import { Splat } from './Splat.js';

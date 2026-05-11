@@ -1,4 +1,4 @@
-import {Camera, Node, Transform} from 'engine/core.js';
+import {Camera, Node, Transform} from './engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
 

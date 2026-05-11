@@ -1,4 +1,4 @@
-const code = await fetch(new URL('Compositor.wgsl', import.meta.url))
+const code = await fetch(new URL('./shaders/composite.wgsl', import.meta.url))
     .then(response => response.text());
 
 export class Compositor {

@@ -1,19 +1,17 @@
-// main.js
+import { GUI } from './gaussian_splatting_pipeline/lib/dat.js';
+import { vec3, mat4 } from './gaussian_splatting_pipeline/lib/glm.js';
 
-import { GUI } from 'dat';
-import { vec3, mat4 } from 'glm';
+import { ResizeSystem } from './gaussian_splatting_pipeline/engine/systems/ResizeSystem.js';
+import { UpdateSystem } from './gaussian_splatting_pipeline/engine/systems/UpdateSystem.js';
 
-import { ResizeSystem } from 'engine/systems/ResizeSystem.js';
-import { UpdateSystem } from 'engine/systems/UpdateSystem.js';
+import {Camera, Node, Transform} from './gaussian_splatting_pipeline/engine/core.js';
+import { TouchController } from './gaussian_splatting_pipeline/engine/controllers/TouchController.js';
 
-import {Camera, Node, Transform} from 'engine/core.js';
-import { TouchController } from 'engine/controllers/TouchController.js';
+import { parseSplats } from './gaussian_splatting_pipeline/file_handling/parseSplats.js';
+import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
 
-import { parseSplats } from './parseSplats.js';
-import { Splat } from './Splat.js';
-
-import { RenderingPipeline } from './RenderingPipeline.js';
-import { SplatLoader } from './SplatLoader.js';
+import { RenderingPipeline } from './gaussian_splatting_pipeline/RenderingPipeline.js';
+import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
 // webbpu init
 const adapter = await navigator.gpu.requestAdapter();

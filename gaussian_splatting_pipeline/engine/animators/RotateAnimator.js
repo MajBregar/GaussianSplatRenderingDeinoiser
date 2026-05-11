@@ -1,20 +1,20 @@
-import { vec3 } from 'glm';
+import { vec3 } from '../../lib/glm.js';
 
 import { Transform } from '../core/Transform.js';
 
-export class LinearAnimator {
+export class RotateAnimator {
 
     constructor(node, {
-        startPosition = [0, 0, 0],
-        endPosition = [0, 0, 0],
+        startRotation = [0, 0, 0, 1],
+        endRotation = [0, 0, 0, 1],
         startTime = 0,
         duration = 1,
         loop = false,
     } = {}) {
         this.node = node;
 
-        this.startPosition = startPosition;
-        this.endPosition = endPosition;
+        this.startRotation = startRotation;
+        this.endRotation = endRotation;
 
         this.startTime = startTime;
         this.duration = duration;
@@ -48,7 +48,7 @@ export class LinearAnimator {
             return;
         }
 
-        vec3.lerp(transform.translation, this.startPosition, this.endPosition, interpolation);
+        quat.slerp(transform.rotation, this.startRotation, this.endRotation, interpolation);
     }
 
 }
