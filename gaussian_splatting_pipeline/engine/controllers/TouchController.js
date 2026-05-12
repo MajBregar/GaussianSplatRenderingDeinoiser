@@ -1,4 +1,4 @@
-import { quat, vec2, vec3 } from '../../lib/glm.js';
+import { quat, vec2, vec3 } from 'glm';
 
 import { Transform } from '../core/Transform.js';
 

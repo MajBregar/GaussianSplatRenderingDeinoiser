@@ -1,15 +1,8 @@
-import { vec3, mat4 } from './lib/glm.js';
+import { vec3, mat4 } from 'glm';
+import { Camera } from 'engine/core.js';
 
-import { Camera } from './engine/core.js';
-
-import {
-    getLocalModelMatrix,
-    getGlobalViewMatrix,
-    getProjectionMatrix,
-} from './engine/core/SceneUtils.js';
-
-import { parseFormat, createVertexBuffer } from './engine/core/VertexUtils.js';
-
+import { getLocalModelMatrix, getGlobalViewMatrix, getProjectionMatrix} from 'engine/core/SceneUtils.js';
+import { parseFormat, createVertexBuffer } from 'engine/core/VertexUtils.js';
 import { Splat } from './file_handling/Splat.js';
 
 const code = await fetch(new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url))
