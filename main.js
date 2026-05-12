@@ -15,7 +15,6 @@ import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLo
 
 // webbpu init
 const adapter = await navigator.gpu.requestAdapter();
-
 const device = await adapter.requestDevice({requiredFeatures: ['float32-blendable']});
 
 const canvas = document.querySelector('canvas');
@@ -73,15 +72,59 @@ camera.addComponent({
 
 
 
+// GUI
+function makeGUIControllerReadOnly(controller) {
+    const input = controller.domElement.querySelector('input');
+    if (input) {
+        input.readOnly = true;
+        input.disabled = true;
+        input.style.pointerEvents = 'none';
+    }
+    controller.domElement.style.pointerEvents = 'none';
+    controller.domElement.style.opacity = '0.75';
+}
+
+const UPDATE_FRAME_STATS_EVERY_N_SECONDS = 1.0;
+
+const performance_stats = {
+    fps: '0',
+    frame_time: '0.00',
+};
+
+let frame_counter = 0;
+let runtime_counter = 0;
+
+const gui = new GUI();
+
+const fpsController = gui.add(performance_stats, 'fps').name('FPS').listen();
+const frameTimeController = gui.add(performance_stats, 'frame_time').name('Frame time ms').listen();
+makeGUIControllerReadOnly(fpsController);
+makeGUIControllerReadOnly(frameTimeController);
+
+gui.add(renderingPipeline.renderer, 'splatScale', 0, 10);
+gui.add(renderingPipeline.renderer, 'loBound', 0, 1);
+gui.add(renderingPipeline.renderer, 'hiBound', 0, 1);
+
 
 // render loop wrappers
 function update(t, dt) {
+    frame_counter++;
+    runtime_counter += dt;
+
+    if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
+        performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
+        performance_stats.frame_time = ((runtime_counter / frame_counter) * 1000).toFixed(2);
+
+        frame_counter = 0;
+        runtime_counter = 0;
+    }
+
     scene.traverse(node => {
         for (const component of node.components) {
             component.update?.(t, dt);
         }
-
     });
+
     renderingPipeline.update(t, dt);
 }
 
@@ -95,11 +138,11 @@ function resize({ displaySize: { width, height }}) {
 
 
 
+
+
+
+
 // START RENDER
+
 new ResizeSystem({canvas, resize}).start();
 new UpdateSystem({update, render}).start();
-
-const gui = new GUI();
-gui.add(renderingPipeline.renderer, 'splatScale', 0, 10);
-gui.add(renderingPipeline.renderer, 'loBound', 0, 1);
-gui.add(renderingPipeline.renderer, 'hiBound', 0, 1);

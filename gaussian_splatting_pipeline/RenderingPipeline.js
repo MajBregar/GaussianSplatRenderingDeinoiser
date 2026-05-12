@@ -1,6 +1,7 @@
 import {Camera, Node, Transform} from './engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
+import { Denoiser } from './Denoiser_passthrough.js';
 
 export class RenderingPipeline {
 
@@ -23,7 +24,7 @@ export class RenderingPipeline {
 
         this.renderer = new SplatRenderer(device, format);
 
-        this.compositorFloat = new Compositor(device, 'rgba32float');
+        this.denoiser = new Denoiser(device, 'rgba32float');
 
         this.compositor = new Compositor(device, format);
         this.compositor.gamma = 1;
@@ -34,13 +35,11 @@ export class RenderingPipeline {
         this.compositorTexture = null;
 
         // STATE VARIABLES
-        this.nFrames = 0;
     }
 
     // CALLABLE
 
     instantResetHandler() {
-        this.#resetAccumulation()
     }
 
     update(t, dt) {
@@ -57,34 +56,32 @@ export class RenderingPipeline {
         this.#resizeDepthTexture();
         this.#resizeCompositorTexture();
 
-        const renderTarget = {
+        
+        // Gaussian splat rendering
+        const splatting_render_target = {
             color: this.colorTexture,
             depth: this.depthTexture,
         };
+        this.renderer.render(splatting_render_target, this.scene, this.camera);
+        
 
-        const compositorTarget = {
+        // Denoising
+        const denoiser_render_target = {
             color: this.compositorTexture,
-        };
+        }
+        this.denoiser.render(denoiser_render_target, this.colorTexture, this.depthTexture);
 
-        const canvasTarget = {
+
+        // Output compositorTexture to canvas and gamma correct / alpha blend with prev texture (alpha = 1 is fully replace)
+        const canvas_render_target = {
             color: this.context.getCurrentTexture(),
         };
-
-        this.renderer.render(renderTarget, this.scene, this.camera);
-
-        this.nFrames += 1;
-        this.compositorFloat.render(compositorTarget, this.colorTexture, 1 / this.nFrames, 1);
-
-        this.compositor.render(canvasTarget,this.compositorTexture);
+        this.compositor.render(canvas_render_target, this.compositorTexture, 1.0);
     }
 
 
     // INTERNAL
     
-    #resetAccumulation() {
-        this.nFrames = 0;
-    }
-
     #resizeColorTexture() {
         if (this.colorTexture && this.colorTexture.width === this.canvas.width &&  this.colorTexture.height === this.canvas.height) {
             return;
@@ -113,7 +110,7 @@ export class RenderingPipeline {
                 this.canvas.height,
             ],
             format: 'depth24plus',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
     }
 
