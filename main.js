@@ -105,6 +105,8 @@ gui.add(renderingPipeline.renderer, 'loBound', 0, 1).name("Lower Bound");
 gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
 gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
 
+gui.add(renderingPipeline.temporal_denoiser, 'historyWeight', 0, 1).name("TAA History Weight");
+gui.add(renderingPipeline.temporal_denoiser, 'depthThreshold', 0, 0.01).name("TAA Depth Thr");
 
 // render loop wrappers
 function update(t, dt) {
@@ -138,11 +140,6 @@ function resize({ displaySize: { width, height }}) {
 
 
 
-
-
-
-
 // START RENDER
-
 new ResizeSystem({canvas, resize}).start();
 new UpdateSystem({update, render}).start();

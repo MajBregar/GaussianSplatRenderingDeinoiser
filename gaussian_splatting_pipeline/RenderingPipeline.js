@@ -1,7 +1,9 @@
 import {Camera, Node, Transform} from 'engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
-import { Denoiser } from './Denoiser_passthrough.js';
+
+//import { Denoiser } from './Denoiser_passthrough.js';
+import { TemporalDenoiser } from './TemporalDenoiser.js';
 
 export class RenderingPipeline {
 
@@ -24,7 +26,7 @@ export class RenderingPipeline {
 
         this.renderer = new SplatRenderer(device, format);
 
-        this.denoiser = new Denoiser(device, 'rgba32float');
+        this.temporal_denoiser = new TemporalDenoiser(this.device, 'rgba16float');
 
         this.compositor = new Compositor(device, format);
         this.compositor.gamma = 1;
@@ -55,6 +57,7 @@ export class RenderingPipeline {
         this.#resizeColorTexture();
         this.#resizeDepthTexture();
         this.#resizeCompositorTexture();
+        this.temporal_denoiser.resize(this.canvas.width, this.canvas.height);
 
         
         // Gaussian splat rendering
@@ -66,10 +69,10 @@ export class RenderingPipeline {
         
 
         // Denoising
-        const denoiser_render_target = {
+        const temporal_denoiser_render_target = {
             color: this.compositorTexture,
         }
-        this.denoiser.render(denoiser_render_target, this.colorTexture, this.depthTexture);
+        this.temporal_denoiser.render(temporal_denoiser_render_target, this.colorTexture, this.depthTexture, this.camera);
 
 
         // Output compositorTexture to canvas and gamma correct / alpha blend with prev texture (alpha = 1 is fully replace)
@@ -125,7 +128,7 @@ export class RenderingPipeline {
                 this.canvas.width,
                 this.canvas.height,
             ],
-            format: 'rgba32float',
+            format: 'rgba16float',
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
     }

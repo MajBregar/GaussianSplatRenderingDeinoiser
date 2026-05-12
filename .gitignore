@@ -3,3 +3,5 @@ splats/debug_horizontal.splat
 splats/debug_vertical.splat
 splats/debug.splat
 splats/train.splat
+
+tmp/*
