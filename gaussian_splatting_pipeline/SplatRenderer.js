@@ -161,7 +161,7 @@ export class SplatRenderer {
                 view: renderTarget.depth.createView(),
                 depthLoadOp: 'clear',
                 depthClearValue: 1,
-                depthStoreOp: 'discard',
+                depthStoreOp: 'store',
             },
         });
         this.renderPass.setPipeline(this.pipeline);

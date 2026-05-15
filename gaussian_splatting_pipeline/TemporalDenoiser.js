@@ -4,8 +4,6 @@ import { getGlobalViewMatrix, getProjectionMatrix } from 'engine/core/SceneUtils
 const code = await fetch(new URL('./shaders/temporal_denoising.wgsl', import.meta.url)).then(response => response.text());
 
 export class TemporalDenoiser {
-    // Depth-aware temporal accumulation with history rejection + camera reprojection
-
     constructor(device, format = 'rgba16float') {
         this.device = device;
         this.format = format;
@@ -23,17 +21,21 @@ export class TemporalDenoiser {
         this.nextHistoryConfidenceTexture = null;
 
         this.previousViewProjectionMatrix = null;
-
         this.firstFrame = true;
 
-        this.historyWeight = 0.95;
-        this.depthThreshold = 0.002;
+        this.historyWeight = 1.0;
+        this.maxHistoryConfidence = 24.0;
+        this.depthThreshold = 0.02;
+
+        this.varianceClipGamma = 5.0;
+        this.colorDifferenceScale = 0.0; // unused 
+        this.reprojectionDistanceScale = 2.0;
 
         this.layout = this.device.createBindGroupLayout({
             entries: [
-                { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+                { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
-                { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+                { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
                 { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
                 { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'non-filtering' } },
@@ -57,10 +59,13 @@ export class TemporalDenoiser {
             },
         });
 
-        this.sampler = this.device.createSampler({ magFilter: 'nearest', minFilter: 'nearest' });
+        this.sampler = this.device.createSampler({
+            magFilter: 'nearest',
+            minFilter: 'nearest',
+        });
 
         this.uniformBuffer = this.device.createBuffer({
-            size: 160,
+            size: 176,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
     }
@@ -96,13 +101,16 @@ export class TemporalDenoiser {
     }
 
     render(renderTarget, colorTexture, depthTexture, camera) {
-        if (!this.historyColorTexture) throw new Error('TemporalDenoiser.resize(width, height) must be called before render().');
+        if (!this.historyColorTexture) {
+            throw new Error('TemporalDenoiser.resize(width, height) must be called before render().');
+        }
 
         const viewMatrix = getGlobalViewMatrix(camera);
         const projectionMatrix = getProjectionMatrix(camera);
 
         const currentViewProjectionMatrix = mat4.create();
-        mat4.multiply(currentViewProjectionMatrix, projectionMatrix, viewMatrix)
+        mat4.multiply(currentViewProjectionMatrix, projectionMatrix, viewMatrix);
+
         const inverseCurrentViewProjectionMatrix = mat4.create();
         mat4.invert(inverseCurrentViewProjectionMatrix, currentViewProjectionMatrix);
 
@@ -110,15 +118,20 @@ export class TemporalDenoiser {
             this.previousViewProjectionMatrix = new Float32Array(currentViewProjectionMatrix);
         }
 
-        
+        const uniformData = new Float32Array(44);
 
-        const uniformData = new Float32Array(40);
         uniformData.set(this.previousViewProjectionMatrix, 0);
         uniformData.set(inverseCurrentViewProjectionMatrix, 16);
+
         uniformData[32] = this.historyWeight;
         uniformData[33] = this.depthThreshold;
         uniformData[34] = this.firstFrame ? 1.0 : 0.0;
-        uniformData[35] = 0.0;
+        uniformData[35] = this.maxHistoryConfidence;
+
+        uniformData[36] = this.varianceClipGamma;
+        uniformData[37] = this.colorDifferenceScale;
+        uniformData[38] = this.reprojectionDistanceScale;
+        uniformData[39] = 0.0;
 
         this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData);
 
@@ -178,6 +191,7 @@ export class TemporalDenoiser {
         this.previousViewProjectionMatrix = new Float32Array(currentViewProjectionMatrix);
         this.firstFrame = false;
     }
+
 
     #createColorHistoryTexture() {
         return this.device.createTexture({
