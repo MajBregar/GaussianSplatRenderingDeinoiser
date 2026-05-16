@@ -129,8 +129,9 @@ fn fragment(input: FragmentInput) -> FragmentOutput {
 
     // firefily handling
     let support = foregroundSupportCount(centerPixel);
-    if (support <= 2 && confidenceNorm < 0.35) {
-        spatialStrength = max(spatialStrength, uniforms.fireflyStrength);
+    if (support <= 7) {
+        output.color = vec4f(0.0, 1.0, 0.0, 1.0);
+        discard;
     }
 
     var colorSum = vec3f(0.0);

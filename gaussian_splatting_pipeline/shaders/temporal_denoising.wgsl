@@ -22,14 +22,13 @@ struct Uniforms {
 
 @group(0) @binding(6) var<uniform> uniforms: Uniforms;
 
-
-const USE_REPROJECTION: bool = true;
-
-
+const DEBUG_DEFAULT_COLOR = vec4f(0.0);
+const outlierDetectionSupport: i32 = 7;
 const DEBUG_CONFIDENCE: bool = false;
 const DEBUG_HISTORY_COLOR: bool = false;
 const DEBUG_CURRENT_HISTORY_DIFF: bool = false;
 const DEBUG_REJECTION_REASON: bool = false;
+const DEBUG_FIREFLY: bool = true;
 
 const vertices = array(
     vec2f(-1.0, -1.0),
@@ -56,6 +55,7 @@ struct FragmentOutput {
     @location(1) historyColor: vec4f,
     @location(2) historyDepth: f32,
     @location(3) historyConfidence: f32,
+    @location(4) debug: vec4<f32>,
 }
 
 @vertex
@@ -67,7 +67,6 @@ fn vertex(input: VertexInput) -> VertexOutput {
 
     return output;
 }
-
 
 fn uvToClipPosition(uv: vec2f, depth: f32) -> vec4f {
     return vec4f(
@@ -148,9 +147,26 @@ fn loadHistoryConfidenceFromUv(uv: vec2f) -> f32 {
     return textureLoad(historyConfidenceTexture, pixel, 0).r;
 }
 
-// ------------------------------------------------------------
-// Variance clipping
-// ------------------------------------------------------------
+fn foregroundSupportCount(centerPixel: vec2i) -> i32 {
+    var count = 0;
+
+    for (var y = -1; y <= 1; y = y + 1) {
+        for (var x = -1; x <= 1; x = x + 1) {
+            let d = loadCurrentDepth(centerPixel + vec2i(x, y));
+
+            if (isGeometryDepth(d)) {
+                count = count + 1;
+            }
+        }
+    }
+
+    return count;
+}
+
+fn isSampleOutlier(centerPixel: vec2i) -> bool {
+    let support = foregroundSupportCount(centerPixel);
+    return support <= outlierDetectionSupport;
+}
 
 fn computeNeighborhoodMean(centerPixel: vec2i) -> vec3f {
     var sum = vec3f(0.0);
@@ -268,7 +284,6 @@ fn computeHistoryUv(currentUv: vec2f, currentDepth: f32) -> ReprojectionResult {
     return result;
 }
 
-
 fn computeBasicHistoryFactor(historyConfidence: f32) -> f32 {
     let maxConfidence = max(uniforms.maxHistoryConfidence, 1.0);
     let oldConfidence = min(historyConfidence, maxConfidence);
@@ -318,110 +333,102 @@ fn fragment(input: FragmentInput) -> FragmentOutput {
     let currentColor = textureLoad(currentColorTexture, currentPixel, 0);
     let currentDepth = textureLoad(currentDepthTexture, currentPixel, 0);
 
-    var outputColor = currentColor;
-    var newConfidence = 0.0;
+    let currentGeometry = isGeometryDepth(currentDepth);
+    let firstFrame = uniforms.firstFrame >= 0.5;
+    let sampleOutlier = currentGeometry && isSampleOutlier(currentPixel);
 
-    //default output
-    output.color = outputColor;
-    output.historyColor = outputColor;
-    output.historyDepth = currentDepth;
-    output.historyConfidence = newConfidence;
+    var historyUv = input.texcoords;
+    var reprojectedDepth = currentDepth;
+    var reprojectionValid = false;
 
-    // is background
-    if (!isGeometryDepth(currentDepth)) {
-        if (DEBUG_REJECTION_REASON) {
-            output.color = vec4f(1.0, 0.0, 1.0, 1.0);
-            output.historyColor = output.color;
-        }
-        return output;
+    if (currentGeometry && !firstFrame) {
+        let reprojection = computeHistoryUv(input.texcoords, currentDepth);
+        historyUv = reprojection.uv;
+        reprojectedDepth = reprojection.previousDepth;
+        reprojectionValid = reprojection.valid;
     }
 
-    // is first frame
-    if (uniforms.firstFrame >= 0.5) {
-        if (DEBUG_REJECTION_REASON) {
-            output.color = vec4f(1.0, 1.0, 0.0, 1.0);
-            output.historyColor = output.color;
-        }
-        return output;
-    }
-
-    
-    let reprojection = computeHistoryUv(input.texcoords, currentDepth);
-
-    //invalid reprojection
-    if (!reprojection.valid) {
-        if (DEBUG_REJECTION_REASON) {
-            output.color = vec4f(1.0, 0.0, 0.0, 1.0);
-            output.historyColor = output.color;
-        }
-        return output;
-    }
-
-    let historyUv = reprojection.uv;
     let historyColorRaw = loadHistoryColorFromUv(historyUv).rgb;
     let historyDepth = loadHistoryDepthFromUv(historyUv);
     let historyConfidence = loadHistoryConfidenceFromUv(historyUv);
 
-    // reprojection was background previous frame
-    if (!isGeometryDepth(historyDepth)) {
-        if (DEBUG_REJECTION_REASON) {
-            output.color = vec4f(0.0, 0.0, 1.0, 1.0);
-            output.historyColor = output.color;
-        }
-        return output;
-    }
+    let historyGeometry = isGeometryDepth(historyDepth);
+    let depthDifference = abs(reprojectedDepth - historyDepth);
 
-    
-    let depthDifference = abs(reprojection.previousDepth - historyDepth);
+    let currentGeometryMask = select(0.0, 1.0, currentGeometry);
+    let firstFrameMask = select(0.0, 1.0, !firstFrame);
+    let reprojectionMask = select(0.0, 1.0, reprojectionValid);
+    let historyGeometryMask = select(0.0, 1.0, historyGeometry);
 
-    // reprojection and history buffer depth mismatch
-    if (depthDifference > uniforms.depthThreshold) {
-        if (DEBUG_REJECTION_REASON) {
-            output.color = vec4f(0.0, 1.0, 1.0, 1.0);
-            output.historyColor = output.color;
-        }
-        return output;
-    }
-    
-    // history clip
+    let depthMask = 1.0 - smoothstep(
+        uniforms.depthThreshold * 0.75,
+        uniforms.depthThreshold,
+        depthDifference
+    );
+
+    let historyUsable =
+        currentGeometryMask *
+        firstFrameMask *
+        reprojectionMask *
+        historyGeometryMask *
+        depthMask;
+
     var historyColor = varianceClipHistory(historyColorRaw, currentPixel);
-    
-    // adaptive history weight
+
     let reprojectionDistance = length(historyUv - input.texcoords);
 
-    var historyFactor = computeBasicHistoryFactor(historyConfidence);
-
-    historyFactor = computeAdaptiveHistoryFactor(
+    var historyFactor = computeAdaptiveHistoryFactor(
         currentColor.rgb,
         historyColor,
-        reprojection.previousDepth,
+        reprojectedDepth,
         historyDepth,
         reprojectionDistance,
         historyConfidence
     );
-    
-    outputColor = vec4f(mix(currentColor.rgb, historyColor, historyFactor), 1.0);
-    newConfidence = min(historyConfidence + 1.0, max(uniforms.maxHistoryConfidence, 1.0));
 
-    // DEBUG OUTPUTS
+    historyFactor = clamp(historyFactor * historyUsable, 0.0, 0.98);
+
+    let outlierMask = select(0.0, 1.0, sampleOutlier);
+
+    let currentSampleReliability = mix(1.0, 0.05, outlierMask);
+    let safeCurrentRgb = mix(historyColor, currentColor.rgb, currentSampleReliability);
+
+    let outputRgb = mix(safeCurrentRgb, historyColor, historyFactor);
+
+    let normalConfidence = historyConfidence + 1.0;
+    let outlierConfidence = historyConfidence + 0.05;
+
+    let confidenceIncremented = mix(normalConfidence, outlierConfidence, outlierMask);
+    let newConfidence = min(
+        confidenceIncremented * historyUsable,
+        max(uniforms.maxHistoryConfidence, 1.0)
+    );
+
+    var debugColor = DEBUG_DEFAULT_COLOR;
+
     if (DEBUG_CONFIDENCE) {
         let confidenceVis = newConfidence / max(uniforms.maxHistoryConfidence, 1.0);
-        outputColor = vec4f(vec3f(confidenceVis), 1.0);
+        debugColor = vec4f(vec3f(confidenceVis), 1.0);
     }
 
     if (DEBUG_HISTORY_COLOR) {
-        outputColor = vec4f(historyColorRaw, 1.0);
+        debugColor = vec4f(historyColorRaw, 1.0);
     }
 
     if (DEBUG_CURRENT_HISTORY_DIFF) {
         let diff = abs(currentColor.rgb - historyColorRaw);
-        outputColor = vec4f(diff * 10.0, 1.0);
+        debugColor = vec4f(diff * 10.0, 1.0);
     }
 
-    output.color = outputColor;
-    output.historyColor = outputColor;
+    if (DEBUG_FIREFLY && sampleOutlier) {
+        debugColor = vec4f(1.0, 1.0, 0.0, 1.0);
+    }
+
+    output.color = vec4f(outputRgb, 1.0);
+    output.historyColor = output.color;
     output.historyDepth = currentDepth;
     output.historyConfidence = newConfidence;
+    output.debug = debugColor;
 
     return output;
 }

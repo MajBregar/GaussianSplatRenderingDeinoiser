@@ -66,7 +66,6 @@ camera.addComponent({
         }
 
         mat4.copy(this.lastTransform, transform.matrix);
-        renderingPipeline.instantResetHandler();
     }
 });
 
@@ -114,12 +113,12 @@ gui.add(renderingPipeline.temporal_denoiser, 'varianceClipGamma', 0, 8).name("va
 gui.add(renderingPipeline.temporal_denoiser, 'reprojectionDistanceScale', 0, 100).name("reprojectionDistanceScale");
 
 
-gui.add(renderingPipeline.spatial_denoiser, 'depthSigma', 0.0001, 0.1).step(0.0001).name("SD Depth Sigma");
-gui.add(renderingPipeline.spatial_denoiser, 'colorSigma', 0.0, 2.0).step(0.01).name("SD Color Sigma");
-gui.add(renderingPipeline.spatial_denoiser, 'maxConfidence', 1.0, 64.0).step(1.0).name("SD Max Confidence");
-gui.add(renderingPipeline.spatial_denoiser, 'baseStrength', 0.0, 1.0).step(0.01).name("SD Base Strength");
-gui.add(renderingPipeline.spatial_denoiser, 'minSpatialStrength', 0.0, 1.0).step(0.01).name("SD Min Strength");
-gui.add(renderingPipeline.spatial_denoiser, 'fireflyStrength', 0.0, 1.0).step(0.01).name("SD Firefly Strength");
+// gui.add(renderingPipeline.spatial_denoiser, 'depthSigma', 0.0001, 0.1).step(0.0001).name("SD Depth Sigma");
+// gui.add(renderingPipeline.spatial_denoiser, 'colorSigma', 0.0, 2.0).step(0.01).name("SD Color Sigma");
+// gui.add(renderingPipeline.spatial_denoiser, 'maxConfidence', 1.0, 64.0).step(1.0).name("SD Max Confidence");
+// gui.add(renderingPipeline.spatial_denoiser, 'baseStrength', 0.0, 1.0).step(0.01).name("SD Base Strength");
+// gui.add(renderingPipeline.spatial_denoiser, 'minSpatialStrength', 0.0, 1.0).step(0.01).name("SD Min Strength");
+// gui.add(renderingPipeline.spatial_denoiser, 'fireflyStrength', 0.0, 1.0).step(0.01).name("SD Firefly Strength");
 
 // gui.add(renderingPipeline.debug_depth_compositor, 'depthMin', 0, 1.0).name("DC Depth Min");
 // gui.add(renderingPipeline.debug_depth_compositor, 'depthMax', 0, 1.0).name("DC Depth Max");

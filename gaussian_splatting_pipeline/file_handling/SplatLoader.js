@@ -59,8 +59,6 @@ export class SplatLoader {
 
             this.splatContainer.addChild(splat);
         }
-
-        this.renderingPipeline.instantResetHandler();
     }
 
     async #tryLoadDefaultFile() {
