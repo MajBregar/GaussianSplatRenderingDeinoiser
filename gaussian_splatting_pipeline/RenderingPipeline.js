@@ -4,6 +4,10 @@ import { Compositor } from './Compositor.js';
 import { TemporalDenoiser } from './TemporalDenoiser.js';
 // import { SpatialDenoiser } from './SpatialDenoiser.js';
 
+
+const stochastic_splatting_code = await fetch(new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)).then(response => response.text());
+const sorted_splatting_code = await fetch(new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)).then(response => response.text());
+
 const temporal_denoiser_code = await fetch(new URL('./shaders/temporal_denoising.wgsl', import.meta.url)).then(response => response.text());
 const edge_temporal_denoiser_code = await fetch(new URL('./shaders/temporal_edge_denoising.wgsl', import.meta.url)).then(response => response.text());
 
@@ -25,7 +29,8 @@ export class RenderingPipeline {
         this.scene = scene;
         this.camera = camera;
 
-        this.renderer = new SplatRenderer(device, this.splatFormat);
+        //this.renderer = new SplatRenderer(device, stochastic_splatting_code, this.splatFormat, false);
+        this.renderer = new SplatRenderer(device, sorted_splatting_code, this.splatFormat, true);
 
         this.temporal_denoiser = new TemporalDenoiser(this.device, temporal_denoiser_code, this.splatFormat);
         this.temporal_edge_denoiser = new TemporalDenoiser(this.device, edge_temporal_denoiser_code, this.splatFormat);
