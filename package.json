@@ -1,0 +1,22 @@
+{
+  "name": "gaussiansplatrenderingdeinoiser",
+  "version": "1.0.0",
+  "description": "* 2 key assumptions - static scene, only camera movement + only using post processing effects for cleanup using the outputted stochastic color and depth texture",
+  "main": "main.js",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.26.0",
+    "vite": "^6.4.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vite-plugin-static-copy": "^4.1.0"
+  },
+  "type": "module"
+}

@@ -47,37 +47,27 @@ fn vertex(input: VertexInput) -> VertexOutput {
     return output;
 }
 
+fn encodeDepth24(depth: f32) -> vec3f {
+    let d = clamp(depth, 0.0, 1.0);
+
+    let encoded = vec3f(
+        floor(d * 255.0),
+        floor(fract(d * 255.0) * 255.0),
+        floor(fract(d * 65025.0) * 255.0)
+    );
+
+    return encoded / 255.0;
+}
+
 @fragment
 fn fragment(input: FragmentInput) -> FragmentOutput {
     var output: FragmentOutput;
 
     let dims = vec2i(textureDimensions(depthTexture));
     let pixel = clamp(vec2i(input.fragCoord.xy), vec2i(0), dims - vec2i(1));
+
     let depth = textureLoad(depthTexture, pixel, 0);
 
-    // output flat non grayscale color as background
-    if (uniforms.showBackground > 0.5 && depth >= 0.999999) {
-        output.color = vec4f(1.0, 0.0, 1.0, uniforms.alpha);
-        return output;
-    }
-
-    let denominator = max(uniforms.depthMax - uniforms.depthMin, 0.000001);
-
-    var visualDepth: f32;
-    if (uniforms.invert > 0.5) {
-        visualDepth = (uniforms.depthMax - depth) / denominator;
-    } else {
-        visualDepth = (depth - uniforms.depthMin) / denominator;
-    }
-    visualDepth = clamp(visualDepth, 0.0, 1.0);
-
-    // visulization contrast
-    visualDepth = (visualDepth - 0.5) * uniforms.contrast + 0.5;
-    visualDepth = clamp(visualDepth, 0.0, 1.0);
-
-    // non linearity
-    visualDepth = pow(visualDepth, max(uniforms.gamma, 0.000001));
-
-    output.color = vec4f(vec3f(visualDepth), uniforms.alpha);
+    output.color = vec4f(encodeDepth24(depth), 1.0);
     return output;
 }
