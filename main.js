@@ -10,6 +10,7 @@ import { parseSplats } from './gaussian_splatting_pipeline/file_handling/parseSp
 import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
 import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
+import { RenderingPipelineDatasetGather } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGather.js';
 import { RenderingPipelineSingleFrameInferrence } from './gaussian_splatting_pipeline/RenderingPipelineSingleFrameInferrence.js';
 import { RenderingPipelineTemporalInferrence } from './gaussian_splatting_pipeline/RenderingPipelineTemporalInferrence.js';
 
@@ -18,8 +19,8 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 
 import * as ort from 'onnxruntime-web/webgpu';
 
-const GATHER_TRAINING_EXAMPLES = false;
-const MODEL_NAME = '/models/state_passthrough.onnx';
+const GATHER_TRAINING_EXAMPLES = true;
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoder.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
@@ -53,7 +54,7 @@ scene.addChild(camera);
 
 
 //rendering setup
-const renderingPipeline = new RenderingPipelineTemporalInferrence({
+const renderingPipeline = new RenderingPipelineDatasetGather({
     device,
     context,
     format,
