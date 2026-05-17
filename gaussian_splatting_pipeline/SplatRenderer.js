@@ -61,7 +61,7 @@ export class SplatRenderer {
                 ],
             },
             depthStencil: {
-                depthWriteEnabled: !this.sorted,
+                depthWriteEnabled: true,
                 depthCompare: this.sorted ? 'always' : 'less',
                 format: 'depth24plus',
             },

@@ -34,7 +34,6 @@ export class DepthCompositor {
                 module,
                 targets: [{
                     format: this.format,
-                    // No blending: fragment output directly replaces render target.
                 }],
             },
         });

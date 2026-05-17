@@ -4,12 +4,8 @@ import torch.nn as nn
 
 class InvertPassthroughDenoiser(nn.Module):
     def forward(self, x):
-        # x shape: [1, 4, H, W]
-        # channels: R, G, B, Depth
         rgb = x[:, 0:3, :, :]
-
-        # Invert RGB, ignore depth.
-        return 1.0 - rgb
+        return 1.0 - rgb 
 
 
 model = InvertPassthroughDenoiser()

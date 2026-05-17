@@ -16,7 +16,7 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 import * as ort from 'onnxruntime-web/webgpu';
 
 const GATHER_TRAINING_EXAMPLES = false;
-const MODEL_NAME = '/models/tiny_denoiser.onnx';
+const MODEL_NAME = '/models/SimpleAutoencoder720p_depth.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
@@ -57,7 +57,7 @@ const renderingPipeline = new RenderingPipeline({
     canvas,
     scene,
     camera,
-    MODEL_NAME
+    modelName: MODEL_NAME
 });
 
 
@@ -122,7 +122,6 @@ const guiState = {
     outputFolder: 'None',
 };
 
-gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
 
 const guiActions = {
     selectOutputFolder: async () => {
@@ -145,6 +144,12 @@ const guiActions = {
     },
 };
 
+
+gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
+const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
+makeGUIControllerReadOnly(sampleCountController);
+
+gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
 gui.add(guiActions, 'selectOutputFolder').name('Select output folder');
 
 // gui.add(renderingPipeline.renderer, 'splatScale', 0, 10).name("Splat Scale");

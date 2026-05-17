@@ -1,9 +1,11 @@
 export class ImageSampler {
-    constructor(device, outputFolderName = 'samples') {
+    constructor(device, file_prefix) {
         this.device = device;
-        this.outputFolderName = outputFolderName;
         this.counter = 0;
+        this.file_prefix = file_prefix;
         this.outputDirectoryHandle = null;
+        this.sample_limit = 200;
+        this.sampleLimitWarningShown = false;
     }
 
     async selectOutputFolder() {
@@ -18,25 +20,33 @@ export class ImageSampler {
         return this.outputDirectoryHandle;
     }
 
-    nextId() {
+    getId() {
         const id = String(this.counter).padStart(6, '0');
-        this.counter++;
         return id;
     }
 
     async save(colorTexture, depthColorTexture) {
+        if (this.counter >= this.sample_limit) {
+            if (!this.sampleLimitWarningShown) {
+                alert(`Sample limit reached (${this.sample_limit}).`);
+                this.sampleLimitWarningShown = true;
+            }
+
+            return;
+        }
+
         await this.savePair(colorTexture, depthColorTexture);
     }
 
-    async savePair(colorTexture, depthColorTexture) {
+    async savePair(colorTexture, depthColorTexture, image_name) {
         if (!this.outputDirectoryHandle) {
             await this.selectOutputFolder();
         }
 
-        const id = this.nextId();
+        const id = this.getId();
 
-        await this.saveColor(colorTexture, `color_${id}.png`);
-        await this.saveColor(depthColorTexture, `depth_${id}.png`);
+        await this.saveColor(colorTexture, `${this.file_prefix}_${image_name}_color_${id}.png`);
+        await this.saveColor(depthColorTexture, `${this.file_prefix}_${image_name}_depth_${id}.png`);
     }
 
     async saveColor(texture, filename) {

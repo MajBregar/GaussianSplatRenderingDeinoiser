@@ -11,7 +11,8 @@ const mjsUrl = new URL(
 ).href;
 
 export class OnnxModelInitializer {
-    constructor(modelPath = '/models/tiny_denoiser.onnx') {
+
+    constructor(modelPath) {
         this.modelPath = modelPath;
         this.session = null;
     }

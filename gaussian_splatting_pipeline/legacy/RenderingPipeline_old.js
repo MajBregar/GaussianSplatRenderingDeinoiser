@@ -90,7 +90,7 @@ export class RenderingPipeline {
         this.textureToTensorConverter = new TextureToTensorConverter(this.device);
         this.tensorToTextureConverter = new TensorToTextureConverter(this.device);
 
-        this.webgpu_denoiser = new WebGpuDenoiser('/models/tiny_denoiser.onnx');
+        this.webgpu_denoiser = new WebGpuDenoiser();
         this.webgpuDenoiserReady = false;
 
         this.webgpu_denoiser.init(device).then(() => {

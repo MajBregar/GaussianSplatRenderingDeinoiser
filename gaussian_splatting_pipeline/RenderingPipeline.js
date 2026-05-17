@@ -52,17 +52,14 @@ export class RenderingPipeline {
             true
         );
 
-        this.image_sampler = new ImageSampler(this.device, './samples_1');
+        this.image_sampler = new ImageSampler(this.device, 'nike');
         this.depth_converter = new DepthCompositor(this.device, 'rgba8unorm');
         this.compositor = new Compositor(device, format);
 
         this.directColorTexture_A = null;
-        this.directColorTexture_B = null;
-
         this.directDepthTexture_A = null;
-        this.directDepthTexture_B = null;
-
         this.depthExportTexture = null;
+        
         this.debugTexture = null;
 
         this.inferenceInputBuffer = null;
@@ -119,7 +116,14 @@ export class RenderingPipeline {
 
     async train_set_render() {
         this.#ensureTrainingResources();
+        
+        let save = false;
+        if (this.saveRequested) {
+            this.saveRequested = false;
+            save = true;
+        }
 
+        // noisy texture export
         this.renderer.render(
             {
                 color: this.directColorTexture_A,
@@ -129,10 +133,23 @@ export class RenderingPipeline {
             this.camera
         );
 
+        this.depth_converter.render(
+            {
+                color: this.depthExportTexture,
+            },
+            this.directDepthTexture_A
+        );
+
+        if (save) {
+            this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'noise');
+        }
+        
+        // ground truth texture export
+
         this.ground_truth_renderer.render(
             {
-                color: this.directColorTexture_B,
-                depth: this.directDepthTexture_B,
+                color: this.directColorTexture_A,
+                depth: this.directDepthTexture_A,
             },
             this.scene,
             this.camera
@@ -142,22 +159,23 @@ export class RenderingPipeline {
             {
                 color: this.depthExportTexture,
             },
-            this.directDepthTexture_B
+            this.directDepthTexture_A
         );
-
-        if (this.saveRequested) {
-            this.saveRequested = false;
-            this.image_sampler.savePair(
-                this.directColorTexture_B,
-                this.depthExportTexture
-            );
+        
+        if (save) {
+            this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'gt');
         }
 
+        if (save) {
+            this.image_sampler.counter++;
+        }
+        
+        // screen output
         this.compositor.render(
             {
                 color: this.context.getCurrentTexture(),
             },
-            this.directColorTexture_B,
+            this.directColorTexture_A,
             1.0
         );
 
@@ -190,7 +208,6 @@ export class RenderingPipeline {
         let inputTensor = null;
         let outputTensor = null;
 
-        // 1. Render scene into intermediate textures.
         this.renderer.render(
             {
                 color: this.directColorTexture_A,
@@ -202,7 +219,6 @@ export class RenderingPipeline {
 
         await this.device.queue.onSubmittedWorkDone();
 
-        // 2. Convert color + depth textures into ONNX input buffer.
         this.textureToTensorConverter.render(
             this.directColorTexture_A,
             this.directDepthTexture_A,
@@ -214,7 +230,6 @@ export class RenderingPipeline {
         await this.device.queue.onSubmittedWorkDone();
 
         try {
-            // 3. Wrap GPU input buffer as ONNX tensor.
             inputTensor = new ort.Tensor({
                 location: 'gpu-buffer',
                 gpuBuffer: this.inferenceInputBuffer,
@@ -222,7 +237,6 @@ export class RenderingPipeline {
                 dims: [1, 4, height, width],
             });
 
-            // 4. Run ONNX inference.
             const results = await this.onnx_model.session.run(
                 {
                     [this.inputName]: inputTensor,
@@ -243,7 +257,6 @@ export class RenderingPipeline {
 
             await this.device.queue.onSubmittedWorkDone();
 
-            // 5. Convert ONNX output buffer into texture.
             this.tensorToTextureConverter.render(
                 outputTensor.gpuBuffer,
                 this.inferenceOutputTexture,
@@ -253,7 +266,6 @@ export class RenderingPipeline {
 
             await this.device.queue.onSubmittedWorkDone();
 
-            // 6. Composite final denoised texture to canvas.
             this.compositor.render(
                 {
                     color: this.context.getCurrentTexture(),
@@ -332,7 +344,6 @@ export class RenderingPipeline {
         }
 
         this.directColorTexture_A?.destroy();
-        this.directColorTexture_B?.destroy();
 
         this.directColorTexture_A = this.device.createTexture({
             size: [width, height],
@@ -343,14 +354,6 @@ export class RenderingPipeline {
                 GPUTextureUsage.COPY_SRC,
         });
 
-        this.directColorTexture_B = this.device.createTexture({
-            size: [width, height],
-            format: this.splatFormat,
-            usage:
-                GPUTextureUsage.RENDER_ATTACHMENT |
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_SRC,
-        });
     }
 
     #resizeDirectDepthTexture() {
@@ -366,7 +369,6 @@ export class RenderingPipeline {
         }
 
         this.directDepthTexture_A?.destroy();
-        this.directDepthTexture_B?.destroy();
 
         this.directDepthTexture_A = this.device.createTexture({
             size: [width, height],
@@ -377,14 +379,6 @@ export class RenderingPipeline {
                 GPUTextureUsage.COPY_SRC,
         });
 
-        this.directDepthTexture_B = this.device.createTexture({
-            size: [width, height],
-            format: 'depth24plus',
-            usage:
-                GPUTextureUsage.RENDER_ATTACHMENT |
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_SRC,
-        });
     }
 
     #resizeDepthExportTexture() {
