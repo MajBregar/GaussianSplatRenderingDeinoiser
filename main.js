@@ -19,8 +19,7 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 
 import * as ort from 'onnxruntime-web/webgpu';
 
-const GATHER_TRAINING_EXAMPLES = true;
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoder.onnx';
+const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
@@ -54,7 +53,7 @@ scene.addChild(camera);
 
 
 //rendering setup
-const renderingPipeline = new RenderingPipelineDatasetGather({
+const renderingPipeline = new RenderingPipelineSingleFrameInferrence({
     device,
     context,
     format,
@@ -122,39 +121,42 @@ const frameTimeController = gui.add(performance_stats, 'frame_time').name('Frame
 makeGUIControllerReadOnly(fpsController);
 makeGUIControllerReadOnly(frameTimeController);
 
-const guiState = {
-    outputFolder: 'None',
-};
 
+if (renderingPipeline.image_sampler) {
+    const guiState = {
+        outputFolder: 'None',
+    };
 
-const guiActions = {
-    selectOutputFolder: async () => {
-        try {
-            const handle = await renderingPipeline.image_sampler.selectOutputFolder();
+    const guiActions = {
+        selectOutputFolder: async () => {
+            try {
+                const handle = await renderingPipeline.image_sampler.selectOutputFolder();
 
-            if (handle) {
-                guiState.outputFolder = handle.name;
-            } else {
-                guiState.outputFolder = 'None';
+                if (handle) {
+                    guiState.outputFolder = handle.name;
+                } else {
+                    guiState.outputFolder = 'None';
+                }
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    console.log('Output folder selection cancelled.');
+                    return;
+                }
+
+                console.error('Failed to select output folder:', error);
             }
-        } catch (error) {
-            if (error?.name === 'AbortError') {
-                console.log('Output folder selection cancelled.');
-                return;
-            }
-
-            console.error('Failed to select output folder:', error);
-        }
-    },
-};
+        },
+    };
 
 
-// gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
-// const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
-// makeGUIControllerReadOnly(sampleCountController);
+    gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
+    const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
+    makeGUIControllerReadOnly(sampleCountController);
 
-gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
-gui.add(guiActions, 'selectOutputFolder').name('Select output folder');
+    gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
+    gui.add(guiActions, 'selectOutputFolder').name('Select output folder');
+}
+
 
 // gui.add(renderingPipeline.renderer, 'splatScale', 0, 10).name("Splat Scale");
 // gui.add(renderingPipeline.renderer, 'loBound', 0, 1).name("Lower Bound");
@@ -177,7 +179,7 @@ function update(t, dt) {
 
 
 async function render() {
-    const completed = GATHER_TRAINING_EXAMPLES ? await renderingPipeline.train_set_render() : await renderingPipeline.inferrence_render();
+    const completed = await renderingPipeline.render();
 
     if (!completed) {
         return;

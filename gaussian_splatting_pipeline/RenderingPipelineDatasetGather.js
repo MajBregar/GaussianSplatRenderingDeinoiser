@@ -67,7 +67,7 @@ export class RenderingPipelineDatasetGather {
         this.camera.getComponentOfType(Camera).aspect = width / height;
     }
 
-    async train_set_render() {
+    async render() {
         if (this.trainingRenderInFlight) return false;
 
         this.trainingRenderInFlight = true;

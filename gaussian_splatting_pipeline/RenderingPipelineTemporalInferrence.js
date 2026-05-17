@@ -88,7 +88,7 @@ export class RenderingPipelineTemporalInferrence {
         this.#resetHidden();
     }
 
-    async inferrence_render() {
+    async render() {
         if (!this.onnxModelReady) {
             return false;
         }

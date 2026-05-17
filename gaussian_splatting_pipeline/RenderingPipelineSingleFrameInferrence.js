@@ -39,7 +39,6 @@ export class RenderingPipelineSingleFrameInferrence {
 
         this.renderer              = new SplatRenderer(device, stochastic_splatting_code, this.splatFormat, false);
         this.ground_truth_renderer = new SplatRenderer(device, sorted_splatting_code,     this.splatFormat, true);
-        this.image_sampler         = new ImageSampler(device, 'nike');
         this.depth_converter       = new DepthCompositor(device, 'rgba8unorm');
         this.compositor            = new Compositor(device, format);
         this.textureToTensorConverter = new TextureToTensorConverter(device);
@@ -97,58 +96,7 @@ export class RenderingPipelineSingleFrameInferrence {
         this.camera.getComponentOfType(Camera).aspect = width / height;
     }
 
-    async train_set_render() {
-        if (this.trainingRenderInFlight) return false;
-
-        this.trainingRenderInFlight = true;
-        const t0 = performance.now();
-
-        this.#ensureTrainingResources();
-
-        const save = this.saveRequested;
-        this.saveRequested = false;
-
-        this.renderer.render(
-            { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
-            this.scene, this.camera
-        );
-        this.depth_converter.render(
-            { color: this.depthExportTexture },
-            this.directDepthTexture_A
-        );
-        if (save)
-            await this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'noise');
-
-        this.ground_truth_renderer.render(
-            { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
-            this.scene, this.camera
-        );
-        this.depth_converter.render(
-            { color: this.depthExportTexture },
-            this.directDepthTexture_A
-        );
-        if (save) {
-            await this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'gt');
-            this.image_sampler.counter++;
-        }
-
-        this.compositor.render(
-            { color: this.context.getCurrentTexture() },
-            this.directColorTexture_A,
-            1.0
-        );
-
-        await this.device.queue.onSubmittedWorkDone();
-
-        this.last_render_timestamp   = performance.now();
-        this.last_render_duration_ms = performance.now() - t0;
-        this.completed_render_count++;
-        this.trainingRenderInFlight  = false;
-
-        return true;
-    }
-
-    async inferrence_render() {
+    async render() {
         if (!this.onnxModelReady || this.inferenceInFlight) return false;
 
         this.inferenceInFlight = true;
@@ -225,12 +173,6 @@ export class RenderingPipelineSingleFrameInferrence {
         );
 
         await this.device.queue.onSubmittedWorkDone();
-    }
-
-    #ensureTrainingResources() {
-        this.#resizeDirectColorTexture();
-        this.#resizeDirectDepthTexture();
-        this.#resizeDepthExportTexture();
     }
 
     #ensureInferenceResources() {
