@@ -16,7 +16,7 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 import * as ort from 'onnxruntime-web/webgpu';
 
 const GATHER_TRAINING_EXAMPLES = false;
-const MODEL_NAME = '/models/SimpleAutoencoder720p_depth.onnx';
+const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
@@ -169,24 +169,25 @@ function update(t, dt) {
     renderingPipeline.update(t, dt);
 }
 
-async function render() {
-    const frameStart = performance.now();
 
-    if (GATHER_TRAINING_EXAMPLES) {
-        await renderingPipeline.train_set_render();
-    } else {
-        await renderingPipeline.inferrence_render();
+
+
+async function render() {
+    const completed = GATHER_TRAINING_EXAMPLES ? await renderingPipeline.train_set_render() : await renderingPipeline.inferrence_render();
+
+    if (!completed) {
+        return;
     }
 
-    const frameEnd = performance.now();
-
     frame_counter++;
-    runtime_counter += (frameEnd - frameStart) / 1000;
+    runtime_counter += renderingPipeline.last_render_duration_ms / 1000;
 
     if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
-        performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
+        performance_stats.fps =
+            Math.round(frame_counter / runtime_counter).toString();
 
-        performance_stats.frame_time = ((runtime_counter / frame_counter) * 1000).toFixed(2);
+        performance_stats.frame_time =
+            ((runtime_counter / frame_counter) * 1000).toFixed(2);
 
         frame_counter = 0;
         runtime_counter = 0;

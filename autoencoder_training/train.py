@@ -7,14 +7,36 @@ from tqdm import tqdm
 
 from utils.dataset_loading import load_dataset, load_dataset_no_depth
 from utils.evaluation import evaluate_model
-from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
 
+#from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
+from models.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+
+TRAINING_EPOCHS = 50
 
 MODEL_OUTPUT_DIR = Path("model_output")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 IN_CHANNELS = 4
 OUT_CHANNELS = 3
+BASE_CHANNELS = 32
+TARGET_SIZE = (720, 1280)
+
+
+def save_model(model, optimizer, save_path, epoch):
+    torch.save(
+        {
+            "epoch": epoch + 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "train_loss": train_loss,
+            "eval_loss": eval_loss,
+            "in_channels": IN_CHANNELS,
+            "out_channels": OUT_CHANNELS,
+            "base_channels": BASE_CHANNELS,
+            "target_size": TARGET_SIZE,
+        },
+        save_path,
+    )
 
 if __name__ == "__main__":
 
@@ -26,14 +48,14 @@ if __name__ == "__main__":
         train_folder="dataset/train",
         eval_folder="dataset/eval",
         batch_size=1,
-        target_size=(720, 1280),
+        target_size=TARGET_SIZE,
     )
     print("Dataset Loaded")
 
-    model = SimpleAutoencoder720p_with_depth(
+    model = LightweightUNetDenoiser720p(
         in_channels=IN_CHANNELS,
         out_channels=OUT_CHANNELS,
-        base_channels=32,
+        base_channels=BASE_CHANNELS,
     ).to(device)
 
     criterion = nn.L1Loss()
@@ -43,14 +65,17 @@ if __name__ == "__main__":
 
     print("Beginning Training Loop")
 
+    at_epoch = -0
+    
     try:
-        for epoch in range(10):
+        for epoch in range(TRAINING_EPOCHS):
+            at_epoch = epoch
             model.train()
             running_loss = 0.0
 
             progress = tqdm(
                 train_loader,
-                desc=f"Epoch {epoch + 1}/10",
+                desc=f"Epoch {epoch + 1}/{TRAINING_EPOCHS}",
                 unit="batch",
             )
 
@@ -79,7 +104,7 @@ if __name__ == "__main__":
                 data_loader=eval_loader,
                 criterion=criterion,
                 device=device,
-                desc=f"Eval {epoch + 1}/10",
+                desc=f"Eval {epoch + 1}/{TRAINING_EPOCHS}",
             )
 
             print(
@@ -94,59 +119,18 @@ if __name__ == "__main__":
                 best_eval_loss = eval_loss
 
                 best_path = MODEL_OUTPUT_DIR / "autoencoder_best.pt"
-
-                torch.save(
-                    {
-                        "epoch": epoch + 1,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "train_loss": train_loss,
-                        "eval_loss": eval_loss,
-                        "in_channels": IN_CHANNELS,
-                        "out_channels": OUT_CHANNELS,
-                        "base_channels": 32,
-                        "target_size": (720, 1280),
-                    },
-                    best_path,
-                )
-
+                save_model(model, optimizer, best_path, epoch)
                 print(f"Saved best model: {best_path}")
 
         final_path = MODEL_OUTPUT_DIR / "autoencoder_final.pt"
-
-        torch.save(
-            {
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "best_eval_loss": best_eval_loss,
-                "in_channels": IN_CHANNELS,
-                "out_channels": OUT_CHANNELS,
-                "base_channels": 32,
-                "target_size": (720, 1280),
-            },
-            final_path,
-        )
-
+        save_model(model, optimizer, final_path, TRAINING_EPOCHS)
         print(f"Saved final model: {final_path}")
 
     except KeyboardInterrupt:
-        print("\nTraining interrupted by user.")
+        print("\nTraining interrupted.")
 
         interrupted_path = MODEL_OUTPUT_DIR / "autoencoder_interrupted.pt"
-
-        torch.save(
-            {
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "best_eval_loss": best_eval_loss,
-                "in_channels": IN_CHANNELS,
-                "out_channels": OUT_CHANNELS,
-                "base_channels": 32,
-                "target_size": (720, 1280),
-            },
-            interrupted_path,
-        )
-
+        save_model(model, optimizer, interrupted_path, at_epoch)
         print(f"Saved interrupted checkpoint: {interrupted_path}")
 
     finally:

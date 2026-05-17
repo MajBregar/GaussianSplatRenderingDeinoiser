@@ -1,11 +1,11 @@
 from pathlib import Path
 import torch
 
-from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
-
+#from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
+from models.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
 
 CHECKPOINT_PATH = Path("model_output/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../public/models/SimpleAutoencoder720p_depth.onnx")
+ONNX_OUTPUT_PATH = Path("../public/models/LightweightUNetDenoiser720p.onnx")
 
 IN_CHANNELS = 4
 OUT_CHANNELS = 3
@@ -17,7 +17,7 @@ WIDTH = 1280
 def load_model(checkpoint_path: Path, device: str):
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    model = SimpleAutoencoder720p_with_depth(
+    model = LightweightUNetDenoiser720p(
         in_channels=checkpoint.get("in_channels", IN_CHANNELS),
         out_channels=checkpoint.get("out_channels", OUT_CHANNELS),
         base_channels=checkpoint.get("base_channels", BASE_CHANNELS),

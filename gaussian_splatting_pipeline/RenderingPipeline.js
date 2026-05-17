@@ -104,6 +104,10 @@ export class RenderingPipeline {
             this.onnxModelReady = true;
         });
 
+        this.last_render_timestamp = 0;
+        this.last_render_duration_ms = 0;
+        this.completed_render_count = 0;
+
     }
 
     update(t, dt) {
@@ -115,9 +119,18 @@ export class RenderingPipeline {
     }
 
     async train_set_render() {
+        if (this.trainingRenderInFlight) {
+            return false;
+        }
+
+        this.trainingRenderInFlight = true;
+
+        const renderStart = performance.now();
+
         this.#ensureTrainingResources();
-        
+
         let save = false;
+
         if (this.saveRequested) {
             this.saveRequested = false;
             save = true;
@@ -141,11 +154,14 @@ export class RenderingPipeline {
         );
 
         if (save) {
-            this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'noise');
+            await this.image_sampler.savePair(
+                this.directColorTexture_A,
+                this.depthExportTexture,
+                'noise'
+            );
         }
-        
-        // ground truth texture export
 
+        // ground truth texture export
         this.ground_truth_renderer.render(
             {
                 color: this.directColorTexture_A,
@@ -161,15 +177,17 @@ export class RenderingPipeline {
             },
             this.directDepthTexture_A
         );
-        
-        if (save) {
-            this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'gt');
-        }
 
         if (save) {
+            await this.image_sampler.savePair(
+                this.directColorTexture_A,
+                this.depthExportTexture,
+                'gt'
+            );
+
             this.image_sampler.counter++;
         }
-        
+
         // screen output
         this.compositor.render(
             {
@@ -180,21 +198,43 @@ export class RenderingPipeline {
         );
 
         await this.device.queue.onSubmittedWorkDone();
+
+        const renderEnd = performance.now();
+
+        this.last_render_timestamp = renderEnd;
+        this.last_render_duration_ms = renderEnd - renderStart;
+        this.completed_render_count++;
+
+        this.trainingRenderInFlight = false;
+
+        return true;
     }
 
     async inferrence_render() {
         if (!this.onnxModelReady || this.inferenceInFlight) {
-            return;
+            return false;
         }
 
         this.inferenceInFlight = true;
 
+        const renderStart = performance.now();
+
         try {
             await this.#renderInferenceFrameLocked();
+
+            //await this.device.queue.onSubmittedWorkDone();
+
+            const renderEnd = performance.now();
+
+            this.last_render_timestamp = renderEnd;
+            this.last_render_duration_ms = renderEnd - renderStart;
+            this.completed_render_count++;
+
+            return true;
         } catch (error) {
             console.error('ONNX inference failed:', error?.message ?? error);
+            return false;
         } finally {
-            await this.device.queue.onSubmittedWorkDone();
             this.inferenceInFlight = false;
         }
     }
@@ -217,7 +257,7 @@ export class RenderingPipeline {
             this.camera
         );
 
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
 
         this.textureToTensorConverter.render(
             this.directColorTexture_A,
@@ -227,7 +267,7 @@ export class RenderingPipeline {
             height
         );
 
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
 
         try {
             inputTensor = new ort.Tensor({
@@ -255,7 +295,7 @@ export class RenderingPipeline {
                 throw new Error('ONNX output is not GPU-backed.');
             }
 
-            await this.device.queue.onSubmittedWorkDone();
+            //await this.device.queue.onSubmittedWorkDone();
 
             this.tensorToTextureConverter.render(
                 outputTensor.gpuBuffer,
