@@ -10,7 +10,7 @@ const mjsUrl = new URL(
     import.meta.url
 ).href;
 
-export class WebGpuDenoiser {
+export class OnnxModelInitializer {
     constructor(modelPath = '/models/tiny_denoiser.onnx') {
         this.modelPath = modelPath;
         this.session = null;
@@ -34,17 +34,4 @@ export class WebGpuDenoiser {
         }
     }
 
-    async run(inputFloat32, width, height) {
-        const inputTensor = new ort.Tensor(
-            'float32',
-            inputFloat32,
-            [1, 4, height, width]
-        );
-
-        const results = await this.session.run({
-            [this.session.inputNames[0]]: inputTensor,
-        });
-
-        return results[this.session.outputNames[0]].data;
-    }
 }

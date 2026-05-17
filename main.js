@@ -12,40 +12,29 @@ import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
 import { RenderingPipeline } from './gaussian_splatting_pipeline/RenderingPipeline.js';
 import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
-import { WebGpuDenoiser } from './gaussian_splatting_pipeline/WebGpuDenoiser.js';
+import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
+const MODEL_NAME = '/models/tiny_denoiser.onnx';
+const INFERENCE_WIDTH = 1280;
+const INFERENCE_HEIGHT = 720;
 
 // webbpu init
-const adapter = await navigator.gpu.requestAdapter();
-//const device = await adapter.requestDevice({requiredFeatures: ['float32-blendable']});
+const onnxModel = new OnnxModelInitializer(MODEL_NAME);
+await onnxModel.init();
 
-
-const webgpuDenoiser = new WebGpuDenoiser('/models/tiny_denoiser.onnx');
-await webgpuDenoiser.init();
-
-const device = webgpuDenoiser.device;
+const device = onnxModel.device;
+const onnxSession = onnxModel.session;
 
 const canvas = document.querySelector('canvas');
 const context = canvas.getContext('webgpu');
 const format = navigator.gpu.getPreferredCanvasFormat();
-
-context.configure({
-    device,
-    format,
-});
-
-
-
-const INFERENCE_WIDTH = 1280;
-const INFERENCE_HEIGHT = 720;
+context.configure({device, format});
 
 canvas.width = INFERENCE_WIDTH;
 canvas.height = INFERENCE_HEIGHT;
-
 canvas.style.width = `${INFERENCE_WIDTH}px`;
 canvas.style.height = `${INFERENCE_HEIGHT}px`;
-
 
 context.configure({device,format});
 
@@ -127,17 +116,17 @@ const frameTimeController = gui.add(performance_stats, 'frame_time').name('Frame
 makeGUIControllerReadOnly(fpsController);
 makeGUIControllerReadOnly(frameTimeController);
 
-gui.add(renderingPipeline.renderer, 'splatScale', 0, 10).name("Splat Scale");
-gui.add(renderingPipeline.renderer, 'loBound', 0, 1).name("Lower Bound");
-gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
-gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
+// gui.add(renderingPipeline.renderer, 'splatScale', 0, 10).name("Splat Scale");
+// gui.add(renderingPipeline.renderer, 'loBound', 0, 1).name("Lower Bound");
+// gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
+// gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
 
-gui.add(renderingPipeline.temporal_denoiser, 'historyWeight', 0, 1).name("TAA History Weight");
-gui.add(renderingPipeline.temporal_denoiser, 'depthThreshold', 0, 0.1).name("TAA Depth Thr");
+// gui.add(renderingPipeline.temporal_denoiser, 'historyWeight', 0, 1).name("TAA History Weight");
+// gui.add(renderingPipeline.temporal_denoiser, 'depthThreshold', 0, 0.1).name("TAA Depth Thr");
 
-gui.add(renderingPipeline.temporal_denoiser, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
-gui.add(renderingPipeline.temporal_denoiser, 'varianceClipGamma', 0, 8).name("varianceClipGamma");
-gui.add(renderingPipeline.temporal_denoiser, 'reprojectionDistanceScale', 0, 100).name("reprojectionDistanceScale");
+// gui.add(renderingPipeline.temporal_denoiser, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
+// gui.add(renderingPipeline.temporal_denoiser, 'varianceClipGamma', 0, 8).name("varianceClipGamma");
+// gui.add(renderingPipeline.temporal_denoiser, 'reprojectionDistanceScale', 0, 100).name("reprojectionDistanceScale");
 
 
 // gui.add(renderingPipeline.spatial_denoiser, 'depthSigma', 0.0001, 0.1).step(0.0001).name("SD Depth Sigma");
