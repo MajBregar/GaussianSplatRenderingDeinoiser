@@ -4,6 +4,7 @@ public/splats/debug_vertical.splat
 public/splats/debug.splat
 public/splats/train.splat
 public/models/
+splats_local
 
 tmp/*
 .venv

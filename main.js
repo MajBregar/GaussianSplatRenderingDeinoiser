@@ -8,15 +8,18 @@ import { TouchController } from 'engine/controllers/TouchController.js';
 
 import { parseSplats } from './gaussian_splatting_pipeline/file_handling/parseSplats.js';
 import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
-
-import { RenderingPipeline } from './gaussian_splatting_pipeline/RenderingPipeline.js';
 import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
+import { RenderingPipelineSingleFrameInferrence } from './gaussian_splatting_pipeline/RenderingPipelineSingleFrameInferrence.js';
+import { RenderingPipelineTemporalInferrence } from './gaussian_splatting_pipeline/RenderingPipelineTemporalInferrence.js';
+
+
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
+
 import * as ort from 'onnxruntime-web/webgpu';
 
 const GATHER_TRAINING_EXAMPLES = false;
-const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
+const MODEL_NAME = '/models/state_passthrough.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
@@ -50,7 +53,7 @@ scene.addChild(camera);
 
 
 //rendering setup
-const renderingPipeline = new RenderingPipeline({
+const renderingPipeline = new RenderingPipelineTemporalInferrence({
     device,
     context,
     format,
@@ -145,9 +148,9 @@ const guiActions = {
 };
 
 
-gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
-const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
-makeGUIControllerReadOnly(sampleCountController);
+// gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
+// const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
+// makeGUIControllerReadOnly(sampleCountController);
 
 gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
 gui.add(guiActions, 'selectOutputFolder').name('Select output folder');

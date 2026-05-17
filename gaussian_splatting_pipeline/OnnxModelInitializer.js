@@ -25,7 +25,7 @@ export class OnnxModelInitializer {
 
         this.session = await ort.InferenceSession.create(this.modelPath, {
             executionProviders: ['webgpu'],
-            enableGraphCapture: true,
+            preferredOutputLocation: 'gpu-buffer',
         });
 
         this.device = ort.env.webgpu.device;
