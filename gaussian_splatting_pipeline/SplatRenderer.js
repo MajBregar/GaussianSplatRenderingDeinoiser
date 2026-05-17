@@ -197,7 +197,7 @@ export class SplatRenderer {
                 {
                     view: renderTarget.color.createView(),
                     loadOp: 'clear',
-                    clearValue: [0, 0, 0, 1],
+                    clearValue: [1, 1, 1, 1],
                     storeOp: 'store',
                 },
             ],

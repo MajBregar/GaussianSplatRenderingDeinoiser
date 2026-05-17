@@ -2,18 +2,21 @@ import { Camera } from 'engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
 
-
-import { OnnxModelInitializer } from './OnnxModelInitializer.js'
+import { OnnxModelInitializer } from './OnnxModelInitializer.js';
 import { TextureToTensorConverter } from './TextureToTensorConverter.js';
 import { TensorToTextureConverter } from './TensorToTextureConverter.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
-
 import { ImageSampler } from './ImageSampler.js';
 import { DepthCompositor } from './DepthCompositor.js';
 
-const stochastic_splatting_code = await fetch(new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)).then(response => response.text());
-const sorted_splatting_code = await fetch(new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)).then(response => response.text());
+const stochastic_splatting_code = await fetch(
+    new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)
+).then(response => response.text());
+
+const sorted_splatting_code = await fetch(
+    new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)
+).then(response => response.text());
 
 export class RenderingPipeline {
     constructor({
@@ -23,6 +26,7 @@ export class RenderingPipeline {
         canvas,
         scene,
         camera,
+        modelName
     }) {
         this.device = device;
         this.context = context;
@@ -34,13 +38,22 @@ export class RenderingPipeline {
         this.scene = scene;
         this.camera = camera;
 
-        this.renderer = new SplatRenderer(device, stochastic_splatting_code, this.splatFormat, false);
-        this.ground_truth_renderer = new SplatRenderer(device, sorted_splatting_code, this.splatFormat, true);
+        this.renderer = new SplatRenderer(
+            device,
+            stochastic_splatting_code,
+            this.splatFormat,
+            false
+        );
+
+        this.ground_truth_renderer = new SplatRenderer(
+            device,
+            sorted_splatting_code,
+            this.splatFormat,
+            true
+        );
 
         this.image_sampler = new ImageSampler(this.device, './samples_1');
-        this.depth_converter = new DepthCompositor(this.device, 'rgba8unorm')
-        this.depthExportTexture = null;
-
+        this.depth_converter = new DepthCompositor(this.device, 'rgba8unorm');
         this.compositor = new Compositor(device, format);
 
         this.directColorTexture_A = null;
@@ -49,40 +62,50 @@ export class RenderingPipeline {
         this.directDepthTexture_A = null;
         this.directDepthTexture_B = null;
 
+        this.depthExportTexture = null;
         this.debugTexture = null;
 
+        this.inferenceInputBuffer = null;
+        this.inferenceOutputTexture = null;
+
+        this.textureToTensorConverter = new TextureToTensorConverter(this.device);
+        this.tensorToTextureConverter = new TensorToTextureConverter(this.device);
+
+        this.onnx_model = new OnnxModelInitializer(modelName);
+        this.onnxModelReady = false;
+
+        this.inputName = null;
+        this.outputName = null;
+        this.runOptions = null;
+
+        this.inferenceInFlight = false;
 
         this.saveRequested = false;
+
         window.addEventListener('keydown', event => {
             if (event.key.toLowerCase() === 's' && !event.repeat) {
                 this.saveRequested = true;
             }
         });
 
-        //testing tensor computation
-        this.inferenceInputBuffer = null;
-        this.inferenceOutputBuffer = null;
-        this.inferenceOutputTexture = null;
+        this.onnx_model.init().then(() => {
+            this.inputName = this.onnx_model.session.inputNames[0];
+            this.outputName = this.onnx_model.session.outputNames[0];
 
-        this.textureToTensorConverter = new TextureToTensorConverter(this.device);
-        this.tensorToTextureConverter = new TensorToTextureConverter(this.device);
+            this.runOptions = {
+                preferredOutputLocation: {
+                    [this.outputName]: 'gpu-buffer',
+                },
+            };
 
-        this.webgpu_denoiser = new OnnxModelInitializer('/models/tiny_denoiser.onnx');
-        this.webgpuDenoiserReady = false;
-
-        this.webgpu_denoiser.init(device).then(() => {
-            this.webgpuDenoiserReady = true;
             this.inferenceInputBuffer?.destroy();
             this.inferenceInputBuffer = null;
 
-            this.inferenceOutputBuffer?.destroy();
-            this.inferenceOutputBuffer = null;
+            this.inferenceOutputTexture?.destroy();
+            this.inferenceOutputTexture = null;
+
+            this.onnxModelReady = true;
         });
-
-        
-
-        this.inferenceInFlight = false;
-        this.inferenceOutputReady = false;
 
     }
 
@@ -94,50 +117,8 @@ export class RenderingPipeline {
         this.camera.getComponentOfType(Camera).aspect = width / height;
     }
 
-    train_set_render() {
-        this.#resizeDirectColorTextures();
-        this.#resizeDirectDepthTexture();
-        this.#resizeDepthExportTexture();
-
-
-        const noisy_splat_render_target = {
-            color: this.directColorTexture_A,
-            depth: this.directDepthTexture_A,
-        };
-        this.renderer.render(noisy_splat_render_target, this.scene, this.camera);
-
-        const gt_splat_render_target = {
-            color: this.directColorTexture_B,
-            depth: this.directDepthTexture_B,
-        };
-        this.ground_truth_renderer.render(gt_splat_render_target, this.scene, this.camera);
-
-        const depth_convert_target = {
-            color: this.depthExportTexture,
-        };
-        this.depth_converter.render(depth_convert_target, this.directDepthTexture_B);
-
-        if (this.saveRequested) {
-            this.saveRequested = false;
-            this.image_sampler.savePair(this.directColorTexture_B, this.depthExportTexture);
-        }
-
-        //canvas render
-        const canvasRenderTarget = {
-            color: this.context.getCurrentTexture(),
-        };
-
-        this.compositor.render(canvasRenderTarget, this.directColorTexture_B, 1.0);
-    }
-
-
-    async inferrence_render() {
-        this.#resizeDirectColorTextures();
-        this.#resizeDirectDepthTexture();
-        this.#resizeInferenceBuffers();
-
-        const width = this.canvas.width;
-        const height = this.canvas.height;
+    async train_set_render() {
+        this.#ensureTrainingResources();
 
         this.renderer.render(
             {
@@ -148,32 +129,92 @@ export class RenderingPipeline {
             this.camera
         );
 
-        if (!this.webgpuDenoiserReady || this.inferenceInFlight) {
-            this.compositor.render(
-                { color: this.context.getCurrentTexture() },
-                this.inferenceOutputReady ? this.inferenceOutputTexture : this.directColorTexture_A,
-                1.0
+        this.ground_truth_renderer.render(
+            {
+                color: this.directColorTexture_B,
+                depth: this.directDepthTexture_B,
+            },
+            this.scene,
+            this.camera
+        );
+
+        this.depth_converter.render(
+            {
+                color: this.depthExportTexture,
+            },
+            this.directDepthTexture_B
+        );
+
+        if (this.saveRequested) {
+            this.saveRequested = false;
+            this.image_sampler.savePair(
+                this.directColorTexture_B,
+                this.depthExportTexture
             );
+        }
+
+        this.compositor.render(
+            {
+                color: this.context.getCurrentTexture(),
+            },
+            this.directColorTexture_B,
+            1.0
+        );
+
+        await this.device.queue.onSubmittedWorkDone();
+    }
+
+    async inferrence_render() {
+        if (!this.onnxModelReady || this.inferenceInFlight) {
             return;
         }
 
         this.inferenceInFlight = true;
 
+        try {
+            await this.#renderInferenceFrameLocked();
+        } catch (error) {
+            console.error('ONNX inference failed:', error?.message ?? error);
+        } finally {
+            await this.device.queue.onSubmittedWorkDone();
+            this.inferenceInFlight = false;
+        }
+    }
+
+    async #renderInferenceFrameLocked() {
+        this.#ensureInferenceResources();
+
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+
         let inputTensor = null;
         let outputTensor = null;
 
+        // 1. Render scene into intermediate textures.
+        this.renderer.render(
+            {
+                color: this.directColorTexture_A,
+                depth: this.directDepthTexture_A,
+            },
+            this.scene,
+            this.camera
+        );
+
+        await this.device.queue.onSubmittedWorkDone();
+
+        // 2. Convert color + depth textures into ONNX input buffer.
+        this.textureToTensorConverter.render(
+            this.directColorTexture_A,
+            this.directDepthTexture_A,
+            this.inferenceInputBuffer,
+            width,
+            height
+        );
+
+        await this.device.queue.onSubmittedWorkDone();
+
         try {
-            this.textureToTensorConverter.render(
-                this.directColorTexture_A,
-                this.directDepthTexture_A,
-                this.inferenceInputBuffer,
-                width,
-                height
-            );
-
-            const inputName = this.webgpu_denoiser.session.inputNames[0];
-            const outputName = this.webgpu_denoiser.session.outputNames[0];
-
+            // 3. Wrap GPU input buffer as ONNX tensor.
             inputTensor = new ort.Tensor({
                 location: 'gpu-buffer',
                 gpuBuffer: this.inferenceInputBuffer,
@@ -181,24 +222,28 @@ export class RenderingPipeline {
                 dims: [1, 4, height, width],
             });
 
-            const results = await this.webgpu_denoiser.session.run(
+            // 4. Run ONNX inference.
+            const results = await this.onnx_model.session.run(
                 {
-                    [inputName]: inputTensor,
+                    [this.inputName]: inputTensor,
                 },
-                {
-                    preferredOutputLocation: {
-                        [outputName]: 'gpu-buffer',
-                    },
-                }
+                this.runOptions
             );
 
-            outputTensor = results[outputName];
+            outputTensor = results[this.outputName];
 
-            if (outputTensor.location !== 'gpu-buffer') {
-                console.warn('ONNX output is CPU-backed.');
-                return;
+            if (!outputTensor) {
+                throw new Error(`Missing ONNX output '${this.outputName}'.`);
             }
 
+            if (outputTensor.location !== 'gpu-buffer' || !outputTensor.gpuBuffer) {
+                console.error('Invalid ONNX output tensor:', outputTensor);
+                throw new Error('ONNX output is not GPU-backed.');
+            }
+
+            await this.device.queue.onSubmittedWorkDone();
+
+            // 5. Convert ONNX output buffer into texture.
             this.tensorToTextureConverter.render(
                 outputTensor.gpuBuffer,
                 this.inferenceOutputTexture,
@@ -208,56 +253,55 @@ export class RenderingPipeline {
 
             await this.device.queue.onSubmittedWorkDone();
 
-            this.inferenceOutputReady = true;
-
+            // 6. Composite final denoised texture to canvas.
             this.compositor.render(
-                { color: this.context.getCurrentTexture() },
+                {
+                    color: this.context.getCurrentTexture(),
+                },
                 this.inferenceOutputTexture,
                 1.0
             );
-        } catch (error) {
-            console.error('ONNX inference failed:', error?.message ?? error);
+
+            await this.device.queue.onSubmittedWorkDone();
         } finally {
             inputTensor?.dispose?.();
             outputTensor?.dispose?.();
-
-            this.inferenceInFlight = false;
         }
     }
 
+    #ensureTrainingResources() {
+        this.#resizeDirectColorTextures();
+        this.#resizeDirectDepthTexture();
+        this.#resizeDepthExportTexture();
+    }
 
-    // INTERNAL
+    #ensureInferenceResources() {
+        this.#resizeDirectColorTextures();
+        this.#resizeDirectDepthTexture();
+        this.#resizeInferenceBuffers();
+    }
+
     #resizeInferenceBuffers() {
         const width = this.canvas.width;
         const height = this.canvas.height;
 
-        //console.log(width, height);
-
         const inputSizeBytes = 1 * 4 * width * height * 4;
-        const outputSizeBytes = 1 * 3 * width * height * 4;
 
         if (
             this.inferenceInputBuffer &&
             this.inferenceInputBuffer.size === inputSizeBytes &&
-            this.inferenceOutputBuffer.size === outputSizeBytes
+            this.inferenceOutputTexture &&
+            this.inferenceOutputTexture.width === width &&
+            this.inferenceOutputTexture.height === height
         ) {
             return;
         }
 
         this.inferenceInputBuffer?.destroy();
-        this.inferenceOutputBuffer?.destroy();
         this.inferenceOutputTexture?.destroy();
 
         this.inferenceInputBuffer = this.device.createBuffer({
             size: inputSizeBytes,
-            usage:
-                GPUBufferUsage.STORAGE |
-                GPUBufferUsage.COPY_SRC |
-                GPUBufferUsage.COPY_DST,
-        });
-
-        this.inferenceOutputBuffer = this.device.createBuffer({
-            size: outputSizeBytes,
             usage:
                 GPUBufferUsage.STORAGE |
                 GPUBufferUsage.COPY_SRC |
@@ -275,7 +319,6 @@ export class RenderingPipeline {
         });
     }
 
-
     #resizeDirectColorTextures() {
         const width = this.canvas.width;
         const height = this.canvas.height;
@@ -292,17 +335,22 @@ export class RenderingPipeline {
         this.directColorTexture_B?.destroy();
 
         this.directColorTexture_A = this.device.createTexture({
-            size: [this.canvas.width, this.canvas.height],
+            size: [width, height],
             format: this.splatFormat,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
-        });
-        
-        this.directColorTexture_B = this.device.createTexture({
-            size: [this.canvas.width, this.canvas.height],
-            format: this.splatFormat,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC,
         });
 
+        this.directColorTexture_B = this.device.createTexture({
+            size: [width, height],
+            format: this.splatFormat,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC,
+        });
     }
 
     #resizeDirectDepthTexture() {
@@ -323,34 +371,19 @@ export class RenderingPipeline {
         this.directDepthTexture_A = this.device.createTexture({
             size: [width, height],
             format: 'depth24plus',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC,
         });
 
         this.directDepthTexture_B = this.device.createTexture({
             size: [width, height],
             format: 'depth24plus',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
-        });
-    }
-
-    #resizeDebugTexture() {
-        const width = this.canvas.width;
-        const height = this.canvas.height;
-
-        if (
-            this.debugTexture &&
-            this.debugTexture.width === width &&
-            this.debugTexture.height === height
-        ) {
-            return;
-        }
-
-        this.debugTexture?.destroy();
-
-        this.debugTexture = this.device.createTexture({
-            size: [width, height],
-            format: this.splatFormat,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC,
         });
     }
 
@@ -371,8 +404,33 @@ export class RenderingPipeline {
         this.depthExportTexture = this.device.createTexture({
             size: [width, height],
             format: 'rgba8unorm',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_SRC,
         });
     }
 
+    #resizeDebugTexture() {
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+
+        if (
+            this.debugTexture &&
+            this.debugTexture.width === width &&
+            this.debugTexture.height === height
+        ) {
+            return;
+        }
+
+        this.debugTexture?.destroy();
+
+        this.debugTexture = this.device.createTexture({
+            size: [width, height],
+            format: this.splatFormat,
+            usage:
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING,
+        });
+    }
 }

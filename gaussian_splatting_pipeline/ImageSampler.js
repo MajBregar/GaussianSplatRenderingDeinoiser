@@ -1,8 +1,21 @@
 export class ImageSampler {
-    constructor(device, outputFolderPath = 'samples') {
+    constructor(device, outputFolderName = 'samples') {
         this.device = device;
-        this.outputFolderPath = outputFolderPath;
+        this.outputFolderName = outputFolderName;
         this.counter = 0;
+        this.outputDirectoryHandle = null;
+    }
+
+    async selectOutputFolder() {
+        if (!window.showDirectoryPicker) {
+            throw new Error('File System Access API is not supported in this browser.');
+        }
+
+        this.outputDirectoryHandle = await window.showDirectoryPicker({
+            mode: 'readwrite',
+        });
+
+        return this.outputDirectoryHandle;
     }
 
     nextId() {
@@ -12,6 +25,14 @@ export class ImageSampler {
     }
 
     async save(colorTexture, depthColorTexture) {
+        await this.savePair(colorTexture, depthColorTexture);
+    }
+
+    async savePair(colorTexture, depthColorTexture) {
+        if (!this.outputDirectoryHandle) {
+            await this.selectOutputFolder();
+        }
+
         const id = this.nextId();
 
         await this.saveColor(colorTexture, `color_${id}.png`);
@@ -19,17 +40,11 @@ export class ImageSampler {
     }
 
     async saveColor(texture, filename) {
-        await this.#saveTextureAsPng(
-            texture,
-            `${this.outputFolderPath}/${filename}`
-        );
-    }
+        if (!this.outputDirectoryHandle) {
+            await this.selectOutputFolder();
+        }
 
-    async savePair(colorTexture, depthColorTexture) {
-        const id = this.nextId();
-
-        await this.saveColor(colorTexture, `color_${id}.png`);
-        await this.saveColor(depthColorTexture, `depth_${id}.png`);
+        await this.#saveTextureAsPng(texture, filename);
     }
 
     async #saveTextureAsPng(texture, filename) {
@@ -78,10 +93,10 @@ export class ImageSampler {
         readBuffer.unmap();
         readBuffer.destroy();
 
-        await this.#downloadPng(pixels, width, height, filename);
+        await this.#writePngToSelectedFolder(pixels, width, height, filename);
     }
 
-    async #downloadPng(pixels, width, height, filename) {
+    async #writePngToSelectedFolder(pixels, width, height, filename) {
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -95,13 +110,17 @@ export class ImageSampler {
             canvas.toBlob(resolve, 'image/png');
         });
 
-        const url = URL.createObjectURL(blob);
+        if (!blob) {
+            throw new Error('Failed to encode PNG blob.');
+        }
 
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename.replaceAll('/', '_');
-        a.click();
+        const fileHandle = await this.outputDirectoryHandle.getFileHandle(
+            filename,
+            { create: true }
+        );
 
-        URL.revokeObjectURL(url);
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
     }
 }

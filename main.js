@@ -15,17 +15,16 @@ import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLo
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
+const GATHER_TRAINING_EXAMPLES = false;
 const MODEL_NAME = '/models/tiny_denoiser.onnx';
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
 // webbpu init
-const onnxModel = new OnnxModelInitializer(MODEL_NAME);
-await onnxModel.init();
+const webgpuDenoiser = new OnnxModelInitializer(MODEL_NAME);
+await webgpuDenoiser.init();
 
-const device = onnxModel.device;
-const onnxSession = onnxModel.session;
-
+const device = webgpuDenoiser.device;
 const canvas = document.querySelector('canvas');
 const context = canvas.getContext('webgpu');
 const format = navigator.gpu.getPreferredCanvasFormat();
@@ -58,7 +57,10 @@ const renderingPipeline = new RenderingPipeline({
     canvas,
     scene,
     camera,
+    MODEL_NAME
 });
+
+
 
 const splatLoader = new SplatLoader({
     canvas,
@@ -116,45 +118,43 @@ const frameTimeController = gui.add(performance_stats, 'frame_time').name('Frame
 makeGUIControllerReadOnly(fpsController);
 makeGUIControllerReadOnly(frameTimeController);
 
+const guiState = {
+    outputFolder: 'None',
+};
+
+gui.add(guiState, 'outputFolder').name('Sample Output folder').listen();
+
+const guiActions = {
+    selectOutputFolder: async () => {
+        try {
+            const handle = await renderingPipeline.image_sampler.selectOutputFolder();
+
+            if (handle) {
+                guiState.outputFolder = handle.name;
+            } else {
+                guiState.outputFolder = 'None';
+            }
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                console.log('Output folder selection cancelled.');
+                return;
+            }
+
+            console.error('Failed to select output folder:', error);
+        }
+    },
+};
+
+gui.add(guiActions, 'selectOutputFolder').name('Select output folder');
+
 // gui.add(renderingPipeline.renderer, 'splatScale', 0, 10).name("Splat Scale");
 // gui.add(renderingPipeline.renderer, 'loBound', 0, 1).name("Lower Bound");
 // gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
 // gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
 
-// gui.add(renderingPipeline.temporal_denoiser, 'historyWeight', 0, 1).name("TAA History Weight");
-// gui.add(renderingPipeline.temporal_denoiser, 'depthThreshold', 0, 0.1).name("TAA Depth Thr");
-
-// gui.add(renderingPipeline.temporal_denoiser, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
-// gui.add(renderingPipeline.temporal_denoiser, 'varianceClipGamma', 0, 8).name("varianceClipGamma");
-// gui.add(renderingPipeline.temporal_denoiser, 'reprojectionDistanceScale', 0, 100).name("reprojectionDistanceScale");
-
-
-// gui.add(renderingPipeline.spatial_denoiser, 'depthSigma', 0.0001, 0.1).step(0.0001).name("SD Depth Sigma");
-// gui.add(renderingPipeline.spatial_denoiser, 'colorSigma', 0.0, 2.0).step(0.01).name("SD Color Sigma");
-// gui.add(renderingPipeline.spatial_denoiser, 'maxConfidence', 1.0, 64.0).step(1.0).name("SD Max Confidence");
-// gui.add(renderingPipeline.spatial_denoiser, 'baseStrength', 0.0, 1.0).step(0.01).name("SD Base Strength");
-// gui.add(renderingPipeline.spatial_denoiser, 'minSpatialStrength', 0.0, 1.0).step(0.01).name("SD Min Strength");
-// gui.add(renderingPipeline.spatial_denoiser, 'fireflyStrength', 0.0, 1.0).step(0.01).name("SD Firefly Strength");
-
-// gui.add(renderingPipeline.debug_depth_compositor, 'depthMin', 0, 1.0).name("DC Depth Min");
-// gui.add(renderingPipeline.debug_depth_compositor, 'depthMax', 0, 1.0).name("DC Depth Max");
-// gui.add(renderingPipeline.debug_depth_compositor, 'contrast', 0, 1.0).name("DC Contrast");
-
-
 
 // render loop wrappers
 function update(t, dt) {
-    frame_counter++;
-    runtime_counter += dt;
-
-    if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
-        performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
-        performance_stats.frame_time = ((runtime_counter / frame_counter) * 1000).toFixed(2);
-
-        frame_counter = 0;
-        runtime_counter = 0;
-    }
-
     scene.traverse(node => {
         for (const component of node.components) {
             component.update?.(t, dt);
@@ -164,8 +164,28 @@ function update(t, dt) {
     renderingPipeline.update(t, dt);
 }
 
-function render() {
-    renderingPipeline.inferrence_render();
+async function render() {
+    const frameStart = performance.now();
+
+    if (GATHER_TRAINING_EXAMPLES) {
+        await renderingPipeline.train_set_render();
+    } else {
+        await renderingPipeline.inferrence_render();
+    }
+
+    const frameEnd = performance.now();
+
+    frame_counter++;
+    runtime_counter += (frameEnd - frameStart) / 1000;
+
+    if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
+        performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
+
+        performance_stats.frame_time = ((runtime_counter / frame_counter) * 1000).toFixed(2);
+
+        frame_counter = 0;
+        runtime_counter = 0;
+    }
 }
 
 function resize({ displaySize: { width, height }}) {
