@@ -27,7 +27,6 @@ fn compute(@builtin(global_invocation_id) id: vec3u) {
     let pixelIndex = y * uniforms.width + x;
     let planeSize = uniforms.width * uniforms.height;
 
-    // NCHW: [1, 4, H, W]
     outputTensor[pixelIndex + 0u * planeSize] = color.r;
     outputTensor[pixelIndex + 1u * planeSize] = color.g;
     outputTensor[pixelIndex + 2u * planeSize] = color.b;

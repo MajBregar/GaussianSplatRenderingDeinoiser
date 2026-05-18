@@ -24,7 +24,7 @@ export class RenderingPipelineDatasetGather {
         canvas,
         scene,
         camera,
-        modelName
+        onnxModel
     }) {
         this.device  = device;
         this.context = context;
@@ -110,6 +110,7 @@ export class RenderingPipelineDatasetGather {
             const gtDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
             this.image_sampler.queueSave(noiseColor, noiseDepth, 'noise', false);
             this.image_sampler.queueSave(gtColor, gtDepth, 'gt', true);
+            await this.image_sampler._saveChain;  // stall until both files are written
         }
 
         this.compositor.render(

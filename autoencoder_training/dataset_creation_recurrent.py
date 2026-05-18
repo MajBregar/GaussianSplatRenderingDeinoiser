@@ -21,6 +21,7 @@ def depth_rgb_to_f32(path: str | Path) -> np.ndarray:
 def save_depth_npy(input_png: str | Path, output_npy: str | Path) -> None:
     np.save(output_npy, depth_rgb_to_f32(input_png))
 
+
 def _parse_filename(path: Path) -> dict | None:
     match = re.match(r"(.+?)_(noise|gt)_(color|depth)_(\d+)\.png$", path.name)
     if not match:
@@ -35,7 +36,14 @@ def _parse_filename(path: Path) -> dict | None:
     }
 
 
-# ─── main ────────────────────────────────────────────────────────────────────
+def _is_image_valid(path: Path) -> bool:
+    try:
+        img = Image.open(path)
+        img.verify()
+        return True
+    except Exception:
+        return False
+
 
 def generate_sequence_dataset(
     image_folder:  str | Path,
@@ -65,31 +73,53 @@ def generate_sequence_dataset(
         samples[sid][key] = path
 
     required = {"noise_color", "noise_depth", "gt_color"}
-    valid: list[tuple[str, dict]] = []
+    valid: list[tuple[int, dict]] = []
+    corrupted_count = 0
 
     for sid, files in samples.items():
         missing = required - files.keys()
         if missing:
             print(f"[Skip] sample {sid}: missing {sorted(missing)}")
             continue
-        valid.append((sid, files))
 
-    valid.sort(key=lambda x: int(x[0]))
+        corrupt = [k for k in required if not _is_image_valid(files[k])]
+        if corrupt:
+            print(f"[Skip] sample {sid}: corrupted {sorted(corrupt)}")
+            corrupted_count += 1
+            continue
 
-    print(f"Found {len(valid)} complete frames")
+        valid.append((int(sid), files))
+
+    valid.sort(key=lambda x: x[0])
+
+    print(f"Found {len(valid)} complete frames ({corrupted_count} corrupted discarded)")
 
     if not valid:
         raise RuntimeError("No valid frames found — check filename format.")
 
-    sequences: list[list[tuple[str, dict]]] = []
+    runs: list[list[tuple[int, dict]]] = []
+    current_run: list[tuple[int, dict]] = [valid[0]]
 
-    for start in range(0, len(valid), seq_stride):
-        chunk = valid[start : start + seq_stride]
-        if len(chunk) < min_seq_len:
-            print(f"[Skip] last chunk has only {len(chunk)} frames "
-                  f"(min_seq_len={min_seq_len}), discarding")
-            continue
-        sequences.append(chunk)
+    for prev, curr in zip(valid, valid[1:]):
+        gap = curr[0] - prev[0]
+        if gap <= 2:
+            current_run.append(curr)
+        else:
+            runs.append(current_run)
+            current_run = [curr]
+    runs.append(current_run)
+
+    print(f"Formed {len(runs)} contiguous run(s) (gap tolerance: 1 frame)")
+
+    sequences: list[list[tuple[int, dict]]] = []
+    for run in runs:
+        for start in range(0, len(run), seq_stride):
+            chunk = run[start : start + seq_stride]
+            if len(chunk) < min_seq_len:
+                print(f"[Skip] chunk starting at {chunk[0][0]} has only {len(chunk)} frames "
+                      f"(min_seq_len={min_seq_len}), discarding")
+                continue
+            sequences.append(chunk)
 
     print(f"Formed {len(sequences)} sequences "
           f"(stride={seq_stride}, eval_every={eval_every})")
@@ -119,20 +149,9 @@ def generate_sequence_dataset(
         for frame_idx, (sid, files) in enumerate(chunk):
             frame_name = f"{frame_idx:04d}"
 
-            shutil.copy2(
-                files["noise_color"],
-                seq_dir / "input" / f"{frame_name}.png",
-            )
-
-            shutil.copy2(
-                files["gt_color"],
-                seq_dir / "target" / f"{frame_name}.png",
-            )
-            
-            save_depth_npy(
-                files["noise_depth"],
-                seq_dir / "depth" / f"{frame_name}.npy",
-            )
+            shutil.copy2(files["noise_color"], seq_dir / "input"  / f"{frame_name}.png")
+            shutil.copy2(files["gt_color"],    seq_dir / "target" / f"{frame_name}.png")
+            save_depth_npy(files["noise_depth"], seq_dir / "depth" / f"{frame_name}.npy")
 
         if is_eval:
             eval_count += len(chunk)
@@ -148,36 +167,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Convert captured frames into sequence folders for recurrent denoiser training."
     )
-    parser.add_argument(
-        "--images",
-        type=Path,
-        required=True,
-        help="Folder containing the raw captured PNG files",
-    )
-    parser.add_argument(
-        "--out",
-        type=Path,
-        default=Path("dataset_recurrent"),
-        help="Root output folder (default: dataset/)",
-    )
-    parser.add_argument(
-        "--seq_stride",
-        type=int,
-        default=50,
-        help="Number of consecutive frames per sequence (default: 50)",
-    )
-    parser.add_argument(
-        "--eval_every",
-        type=int,
-        default=5,
-        help="Every N-th sequence goes to eval (default: 5, so 20%% eval)",
-    )
-    parser.add_argument(
-        "--min_seq_len",
-        type=int,
-        default=7,
-        help="Discard sequences shorter than this (default: 7, must match seq_len in training)",
-    )
+    parser.add_argument("--images",     type=Path, required=True)
+    parser.add_argument("--out",        type=Path, default=Path("dataset_recurrent"))
+    parser.add_argument("--seq_stride", type=int,  default=25)
+    parser.add_argument("--eval_every", type=int,  default=5)
+    parser.add_argument("--min_seq_len",type=int,  default=7)
 
     args = parser.parse_args()
 

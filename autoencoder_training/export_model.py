@@ -49,10 +49,14 @@ if __name__ == "__main__":
         model,
         dummy,
         ONNX_OUTPUT_PATH.as_posix(),
-        input_names=["input"],
-        output_names=["output"],
-        opset_version=18,
-        external_data=False,
+        input_names    = ["input"],
+        output_names   = ["output"],
+        dynamic_axes   = {
+            "input"  : {0: "batch", 2: "height", 3: "width"},
+            "output" : {0: "batch", 2: "height", 3: "width"},
+        },
+        opset_version  = 18,
+        external_data  = False,
     )
 
     print(f"Exported ONNX model to: {ONNX_OUTPUT_PATH}")

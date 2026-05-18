@@ -11,7 +11,7 @@ from models.RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder
 from utils.dataset_loading import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 100
+TRAINING_EPOCHS = 50
 SEQ_LEN         = 7          # frames per training sequence (paper uses 7)
 PATCH_SIZE      = 128        # spatial crop size (paper uses 128×128)
 BATCH_SIZE      = 1          # keep at 1 for 720p patches on a single GPU

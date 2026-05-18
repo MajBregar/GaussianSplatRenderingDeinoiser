@@ -19,7 +19,7 @@ export class RenderingPipelineTemporalInferrence {
         canvas,
         scene,
         camera,
-        modelName
+        onnxModel
     }) {
         this.device  = device;
         this.context = context;
@@ -53,7 +53,7 @@ export class RenderingPipelineTemporalInferrence {
         };
         this.hiddenReady = false;
 
-        this.onnx_model     = new OnnxModelInitializer(modelName);
+        this.onnx_model     = onnxModel;
         this.onnxModelReady = false;
         this.runOptions     = null;
 

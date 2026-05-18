@@ -11,7 +11,7 @@ from utils.evaluation import evaluate_model
 #from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
 from models.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
 
-TRAINING_EPOCHS = 50
+TRAINING_EPOCHS = 3
 
 MODEL_OUTPUT_DIR = Path("model_output")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

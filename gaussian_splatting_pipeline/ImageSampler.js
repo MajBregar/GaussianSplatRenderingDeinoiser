@@ -39,6 +39,7 @@ export class ImageSampler {
     queueSave(colorData, depthData, image_name, incrementAfter = false) {
         this._saveChain = this._saveChain.then(async () => {
             if (!this.outputDirectoryHandle) return;
+            if (this.counter > this.sample_limit - 1) return;
             const id = this.getId();
             await this.#writePngToSelectedFolder(colorData,
                 `${this.file_prefix}_${image_name}_color_${id}.png`);

@@ -11,23 +11,24 @@ import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
 import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
 import { RenderingPipelineDatasetGather } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGather.js';
-import { RenderingPipelineSingleFrameInferrence } from './gaussian_splatting_pipeline/RenderingPipelineSingleFrameInferrence.js';
-import { RenderingPipelineTemporalInferrence } from './gaussian_splatting_pipeline/RenderingPipelineTemporalInferrence.js';
+import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrence.js';
 
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
 
-const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoder.onnx';
+//const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
+
 const INFERENCE_WIDTH = 1280;
 const INFERENCE_HEIGHT = 720;
 
 // webbpu init
-const webgpuDenoiser = new OnnxModelInitializer(MODEL_NAME);
-await webgpuDenoiser.init();
+const onnxModel = new OnnxModelInitializer(MODEL_NAME);
+await onnxModel.init();
 
-const device = webgpuDenoiser.device;
+const device = onnxModel.device;
 const canvas = document.querySelector('canvas');
 const context = canvas.getContext('webgpu');
 const format = navigator.gpu.getPreferredCanvasFormat();
@@ -53,14 +54,14 @@ scene.addChild(camera);
 
 
 //rendering setup
-const renderingPipeline = new RenderingPipelineDatasetGather({
+const renderingPipeline = new RenderingPipelineModelInferrence({
     device,
     context,
     format,
     canvas,
     scene,
     camera,
-    modelName: MODEL_NAME
+    onnxModel
 });
 
 

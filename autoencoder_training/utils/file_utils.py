@@ -55,38 +55,24 @@ def _parse_sample_file(path: Path):
     }
 
 
+def _is_image_valid(path: Path) -> bool:
+    try:
+        img = Image.open(path)
+        img.verify()
+        return True
+    except Exception:
+        return False
+
+
 def generate_dataset(
     image_folder: str | Path,
     dataset_train_folder: str | Path,
     dataset_eval_folder: str | Path,
     train_eval_split: float,
 ) -> None:
-    """
-    Creates PyTorch-ready folders:
-
-        train/
-            input/
-            target/
-            depth/
-
-        eval/
-            input/
-            target/
-            depth/
-
-    Mapping:
-        *_noise_color_XXXXXX.png -> input image
-        *_gt_color_XXXXXX.png    -> target image
-        *_noise_depth_XXXXXX.png -> depth .npy
-
-    train_eval_split:
-        0.1 -> every 10th sample goes to eval
-        0.5 -> every 2nd sample goes to eval
-    """
-
-    image_folder = Path(image_folder)
+    image_folder         = Path(image_folder)
     dataset_train_folder = Path(dataset_train_folder)
-    dataset_eval_folder = Path(dataset_eval_folder)
+    dataset_eval_folder  = Path(dataset_eval_folder)
 
     if not image_folder.exists():
         raise FileNotFoundError(f"Image folder does not exist: {image_folder}")
@@ -102,39 +88,32 @@ def generate_dataset(
         (root / "depth").mkdir(parents=True, exist_ok=True)
 
     parsed_files = []
-
     for path in sorted(image_folder.glob("*.png")):
         parsed = _parse_sample_file(path)
-
         if parsed is not None:
             parsed_files.append(parsed)
 
     samples = {}
-
     for item in parsed_files:
         key = (item["model_name"], item["sample_id"])
-
         if key not in samples:
             samples[key] = {}
+        samples[key][f"{item['image_name']}_{item['kind']}"] = item["path"]
 
-        name = item["image_name"]
-        kind = item["kind"]
-
-        samples[key][f"{name}_{kind}"] = item["path"]
-
+    required = {"noise_color", "noise_depth", "gt_color"}
     valid_samples = []
+    corrupted_count = 0
 
     for key, files in samples.items():
-        required = {
-            "noise_color",
-            "noise_depth",
-            "gt_color",
-        }
-
         missing = required - files.keys()
-
         if missing:
             print(f"Skipping {key}: missing {sorted(missing)}")
+            continue
+
+        corrupt = [k for k in required if not _is_image_valid(files[k])]
+        if corrupt:
+            print(f"Skipping {key}: corrupted {sorted(corrupt)}")
+            corrupted_count += 1
             continue
 
         valid_samples.append((key, files))
@@ -142,20 +121,14 @@ def generate_dataset(
     valid_samples.sort(key=lambda x: x[0][1])
 
     for index, ((model_name, sample_id), files) in enumerate(valid_samples):
-        is_eval = index % eval_every_n == 0
+        is_eval     = index % eval_every_n == 0
         output_root = dataset_eval_folder if is_eval else dataset_train_folder
+        base_name   = f"{model_name}_{sample_id}"
 
-        base_name = f"{model_name}_{sample_id}"
+        shutil.copy2(files["noise_color"], output_root / "input"  / f"{base_name}.png")
+        shutil.copy2(files["gt_color"],    output_root / "target" / f"{base_name}.png")
+        save_depth_npy(files["noise_depth"], output_root / "depth" / f"{base_name}.npy")
 
-        input_out = output_root / "input" / f"{base_name}.png"
-        target_out = output_root / "target" / f"{base_name}.png"
-        depth_out = output_root / "depth" / f"{base_name}.npy"
-
-        shutil.copy2(files["noise_color"], input_out)
-        shutil.copy2(files["gt_color"], target_out)
-
-        save_depth_npy(files["noise_depth"], depth_out)
-
-    print(f"Generated dataset from {len(valid_samples)} valid samples.")
+    print(f"Generated dataset from {len(valid_samples)} valid samples ({corrupted_count} corrupted discarded).")
     print(f"Train folder: {dataset_train_folder}")
     print(f"Eval folder:  {dataset_eval_folder}")
