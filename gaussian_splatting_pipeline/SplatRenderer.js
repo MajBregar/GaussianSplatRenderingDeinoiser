@@ -9,6 +9,7 @@ import {
 
 import { createVertexBuffer } from 'engine/core/VertexUtils.js';
 import { Splat } from './file_handling/Splat.js';
+import { SplatSorter } from './SplatSorter.js';
 
 export class SplatRenderer {
     constructor(device, code, format = 'rgba8unorm', sorted = false) {
@@ -17,16 +18,20 @@ export class SplatRenderer {
         this.sorted = sorted;
         this.gpuObjects = new WeakMap();
 
+        if (sorted) {
+            this.sorter = new SplatSorter(device);
+        }
+
         const module = this.device.createShaderModule({ code });
 
         this.instanceBufferLayout = {
             arrayStride: 48,
             stepMode: 'instance',
             attributes: [
-                { name: 'position', shaderLocation: 1, offset: 0, format: 'float32x3' },
-                { name: 'color', shaderLocation: 2, offset: 12, format: 'unorm8x4' },
-                { name: 'rotation', shaderLocation: 3, offset: 16, format: 'float32x4' },
-                { name: 'scale', shaderLocation: 4, offset: 32, format: 'float32x3' },
+                { name: 'position',  shaderLocation: 1, offset: 0,  format: 'float32x3' },
+                { name: 'color',     shaderLocation: 2, offset: 12, format: 'unorm8x4' },
+                { name: 'rotation',  shaderLocation: 3, offset: 16, format: 'float32x4' },
+                { name: 'scale',     shaderLocation: 4, offset: 32, format: 'float32x3' },
             ],
         };
 
@@ -43,21 +48,11 @@ export class SplatRenderer {
                         ? {
                             format: this.format,
                             blend: {
-                                color: {
-                                    srcFactor: 'one',
-                                    dstFactor: 'one-minus-src-alpha',
-                                    operation: 'add',
-                                },
-                                alpha: {
-                                    srcFactor: 'one',
-                                    dstFactor: 'one-minus-src-alpha',
-                                    operation: 'add',
-                                },
+                                color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                                alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
                             },
                         }
-                        : {
-                            format: this.format,
-                        },
+                        : { format: this.format },
                 ],
             },
             depthStencil: {
@@ -65,186 +60,130 @@ export class SplatRenderer {
                 depthCompare: this.sorted ? 'always' : 'less',
                 format: 'depth24plus',
             },
-            primitive: {
-                topology: 'triangle-strip',
-            },
+            primitive: { topology: 'triangle-strip' },
         });
 
         this.splatScale = 3;
-        this.loBound = 0;
-        this.hiBound = 1;
-        this.gamma = 1;
+        this.loBound   = 0;
+        this.hiBound   = 1;
+        this.gamma     = 1;
     }
 
     prepareSplat(splat) {
-        if (this.gpuObjects.has(splat)) {
-            return this.gpuObjects.get(splat);
-        }
+        if (this.gpuObjects.has(splat)) return this.gpuObjects.get(splat);
 
-        const instanceBufferArrayBuffer = createVertexBuffer(
-            splat.splats,
-            this.instanceBufferLayout
-        );
+        const instanceBufferArrayBuffer = createVertexBuffer(splat.splats, this.instanceBufferLayout);
 
         const instanceBuffer = this.device.createBuffer({
-            size: instanceBufferArrayBuffer.byteLength,
+            size:  instanceBufferArrayBuffer.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
-
         this.device.queue.writeBuffer(instanceBuffer, 0, instanceBufferArrayBuffer);
 
         let sortedInstanceBuffer = null;
-        let sortedInstanceBufferArrayBuffer = null;
-        let sortedInstanceBufferBytes = null;
-        let instanceBufferBytes = null;
-        let sortEntries = null;
-
         if (this.sorted) {
-            sortedInstanceBufferArrayBuffer = new ArrayBuffer(instanceBufferArrayBuffer.byteLength);
-            sortedInstanceBufferBytes = new Uint8Array(sortedInstanceBufferArrayBuffer);
-            instanceBufferBytes = new Uint8Array(instanceBufferArrayBuffer);
-
-            sortedInstanceBuffer = this.device.createBuffer({
-                size: instanceBufferArrayBuffer.byteLength,
-                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-
-            sortEntries = new Array(splat.splats.length);
-
-            for (let i = 0; i < splat.splats.length; i++) {
-                sortEntries[i] = {
-                    index: i,
-                    z: 0,
-                    position: splat.splats[i].position,
-                };
-            }
-
-            sortedInstanceBufferBytes.set(instanceBufferBytes);
-            this.device.queue.writeBuffer(
-                sortedInstanceBuffer,
-                0,
-                sortedInstanceBufferArrayBuffer
-            );
+            this.sorter.prepare(splat, instanceBufferArrayBuffer);
+            sortedInstanceBuffer = this.sorter.getSortedBuffer(splat);
         }
 
         const splatUniformBuffer = this.device.createBuffer({
-            size: 96,
+            size:  96,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-
         const splatBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(1),
-            entries: [
-                {
-                    binding: 0,
-                    resource: { buffer: splatUniformBuffer },
-                },
-            ],
+            entries: [{ binding: 0, resource: { buffer: splatUniformBuffer } }],
         });
 
-        const gpuObjects = {
-            instanceBuffer,
-            instanceBufferArrayBuffer,
-
-            sortedInstanceBuffer,
-            sortedInstanceBufferArrayBuffer,
-            sortedInstanceBufferBytes,
-            instanceBufferBytes,
-            sortEntries,
-
-            splatUniformBuffer,
-            splatBindGroup,
-        };
-
+        const gpuObjects = { instanceBuffer, sortedInstanceBuffer, splatUniformBuffer, splatBindGroup };
         this.gpuObjects.set(splat, gpuObjects);
+
         return gpuObjects;
     }
 
     prepareCamera(camera) {
-        if (this.gpuObjects.has(camera)) {
-            return this.gpuObjects.get(camera);
-        }
+        if (this.gpuObjects.has(camera)) return this.gpuObjects.get(camera);
 
         const cameraUniformBuffer = this.device.createBuffer({
-            size: 144,
+            size:  144,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-
         const cameraBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
-            entries: [
-                {
-                    binding: 0,
-                    resource: { buffer: cameraUniformBuffer },
-                },
-            ],
+            entries: [{ binding: 0, resource: { buffer: cameraUniformBuffer } }],
         });
 
-        const gpuObjects = {
-            cameraUniformBuffer,
-            cameraBindGroup,
-        };
-
+        const gpuObjects = { cameraUniformBuffer, cameraBindGroup };
         this.gpuObjects.set(camera, gpuObjects);
         return gpuObjects;
     }
 
     render(renderTarget, scene, camera) {
+        const viewMatrix = getGlobalViewMatrix(camera);
+
+        if (this.sorted) {
+            const sortEncoder = this.device.createCommandEncoder();
+            this.#recordSortPasses(sortEncoder, scene, mat4.create(), viewMatrix);
+            this.device.queue.submit([sortEncoder.finish()]);
+        }
+
         const commandEncoder = this.device.createCommandEncoder();
 
         this.renderPass = commandEncoder.beginRenderPass({
-            colorAttachments: [
-                {
-                    view: renderTarget.color.createView(),
-                    loadOp: 'clear',
-                    clearValue: [1, 1, 1, 1],
-                    storeOp: 'store',
-                },
-            ],
+            colorAttachments: [{
+                view:       renderTarget.color.createView(),
+                loadOp:     'clear',
+                clearValue: [1, 1, 1, 1],
+                storeOp:    'store',
+            }],
             depthStencilAttachment: {
-                view: renderTarget.depth.createView(),
-                depthLoadOp: 'clear',
+                view:            renderTarget.depth.createView(),
+                depthLoadOp:     'clear',
                 depthClearValue: 1,
-                depthStoreOp: 'store',
+                depthStoreOp:    'store',
             },
         });
 
         this.renderPass.setPipeline(this.pipeline);
 
-        const viewMatrix = getGlobalViewMatrix(camera);
         const projectionMatrix = getProjectionMatrix(camera);
-        const cameraComponent = camera.getComponentOfType(Camera);
-
+        const cameraComponent  = camera.getComponentOfType(Camera);
         const { cameraUniformBuffer, cameraBindGroup } = this.prepareCamera(cameraComponent);
 
-        this.device.queue.writeBuffer(cameraUniformBuffer, 0, viewMatrix);
-        this.device.queue.writeBuffer(cameraUniformBuffer, 64, projectionMatrix);
-
-        const minSplatSizeInPixels = 1;
-        const screenResolutionInvSq = new Float32Array([
-            minSplatSizeInPixels / renderTarget.color.width ** 2,
-            minSplatSizeInPixels / renderTarget.color.height ** 2,
-        ]);
-
-        this.device.queue.writeBuffer(cameraUniformBuffer, 128, screenResolutionInvSq);
+        this.device.queue.writeBuffer(cameraUniformBuffer, 0,   viewMatrix);
+        this.device.queue.writeBuffer(cameraUniformBuffer, 64,  projectionMatrix);
+        this.device.queue.writeBuffer(cameraUniformBuffer, 128, new Float32Array([
+            1 / renderTarget.color.width  ** 2,
+            1 / renderTarget.color.height ** 2,
+        ]));
         this.renderPass.setBindGroup(0, cameraBindGroup);
 
         this.renderNode(scene, mat4.create(), camera);
 
         this.renderPass.end();
         this.device.queue.submit([commandEncoder.finish()]);
-
         this.renderPass = null;
     }
 
+    #recordSortPasses(encoder, node, modelMatrix, viewMatrix) {
+        const globalModelMatrix = mat4.mul(mat4.create(), modelMatrix, getLocalModelMatrix(node));
+
+        for (const splat of node.getComponentsOfType(Splat)) {
+            this.prepareSplat(splat);
+            const modelViewMatrix = mat4.mul(mat4.create(), viewMatrix, globalModelMatrix);
+            this.sorter.recordSort(encoder, splat, modelViewMatrix);
+        }
+
+        for (const child of node.children) {
+            this.#recordSortPasses(encoder, child, globalModelMatrix, viewMatrix);
+        }
+    }
+
     renderNode(node, modelMatrix = mat4.create(), camera) {
-        const localMatrix = getLocalModelMatrix(node);
-        const globalModelMatrix = mat4.mul(mat4.create(), modelMatrix, localMatrix);
+        const globalModelMatrix = mat4.mul(mat4.create(), modelMatrix, getLocalModelMatrix(node));
 
-        const splats = node.getComponentsOfType(Splat);
-
-        for (const splat of splats) {
-            this.renderSplat(splat, globalModelMatrix, camera);
+        for (const splat of node.getComponentsOfType(Splat)) {
+            this.renderSplat(splat, globalModelMatrix);
         }
 
         for (const child of node.children) {
@@ -252,94 +191,17 @@ export class SplatRenderer {
         }
     }
 
-    renderSplat(splat, modelMatrix, camera) {
-        const gpuObjects = this.prepareSplat(splat);
-
-        const {
-            instanceBuffer,
-            splatUniformBuffer,
-            splatBindGroup,
-        } = gpuObjects;
+    renderSplat(splat, modelMatrix) {
+        const { instanceBuffer, sortedInstanceBuffer, splatUniformBuffer, splatBindGroup }
+            = this.prepareSplat(splat);
 
         this.device.queue.writeBuffer(splatUniformBuffer, 0, modelMatrix);
-
-        this.device.queue.writeBuffer(
-            splatUniformBuffer,
-            64,
-            new Float32Array([
-                this.splatScale,
-                this.loBound,
-                this.hiBound,
-                performance.now(),
-                this.gamma,
-            ])
-        );
-
-        const activeInstanceBuffer = this.sorted
-            ? this.#updateAndGetSortedInstanceBuffer(gpuObjects, modelMatrix, camera)
-            : instanceBuffer;
+        this.device.queue.writeBuffer(splatUniformBuffer, 64, new Float32Array([
+            this.splatScale, this.loBound, this.hiBound, performance.now(), this.gamma,
+        ]));
 
         this.renderPass.setBindGroup(1, splatBindGroup);
-        this.renderPass.setVertexBuffer(0, activeInstanceBuffer);
+        this.renderPass.setVertexBuffer(0, this.sorted ? sortedInstanceBuffer : instanceBuffer);
         this.renderPass.draw(4, splat.splats.length);
-    }
-
-    #updateAndGetSortedInstanceBuffer(gpuObjects, modelMatrix, camera) {
-        const viewMatrix = getGlobalViewMatrix(camera);
-
-        const modelViewMatrix = mat4.create();
-        mat4.multiply(modelViewMatrix, viewMatrix, modelMatrix);
-
-        this.#updateSortDepths(gpuObjects.sortEntries, modelViewMatrix);
-
-        gpuObjects.sortEntries.sort((a, b) => {
-            return a.z - b.z;
-        });
-
-        this.#reorderInstanceBufferBytes(gpuObjects);
-
-        this.device.queue.writeBuffer(
-            gpuObjects.sortedInstanceBuffer,
-            0,
-            gpuObjects.sortedInstanceBufferArrayBuffer
-        );
-
-        return gpuObjects.sortedInstanceBuffer;
-    }
-
-    #updateSortDepths(sortEntries, modelViewMatrix) {
-        for (let i = 0; i < sortEntries.length; i++) {
-            const entry = sortEntries[i];
-            const p = entry.position;
-
-            const x = p[0];
-            const y = p[1];
-            const z = p[2];
-
-            entry.z =
-                modelViewMatrix[2] * x +
-                modelViewMatrix[6] * y +
-                modelViewMatrix[10] * z +
-                modelViewMatrix[14];
-        }
-    }
-
-    #reorderInstanceBufferBytes(gpuObjects) {
-        const stride = this.instanceBufferLayout.arrayStride;
-
-        const source = gpuObjects.instanceBufferBytes;
-        const destination = gpuObjects.sortedInstanceBufferBytes;
-        const sortEntries = gpuObjects.sortEntries;
-
-        for (let dstIndex = 0; dstIndex < sortEntries.length; dstIndex++) {
-            const srcIndex = sortEntries[dstIndex].index;
-
-            const srcOffset = srcIndex * stride;
-            const dstOffset = dstIndex * stride;
-
-            for (let byteOffset = 0; byteOffset < stride; byteOffset++) {
-                destination[dstOffset + byteOffset] = source[srcOffset + byteOffset];
-            }
-        }
     }
 }

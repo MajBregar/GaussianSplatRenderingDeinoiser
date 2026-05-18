@@ -2,7 +2,6 @@ import { Camera } from 'engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
 
-import { OnnxModelInitializer } from './OnnxModelInitializer.js';
 import { TextureToTensorConverter } from './TextureToTensorConverter.js';
 import { TensorToTextureConverter } from './TensorToTextureConverter.js';
 import { ImageSampler } from './ImageSampler.js';
@@ -55,8 +54,12 @@ export class RenderingPipelineDatasetGather {
         this.completed_render_count   = 0;
 
         window.addEventListener('keydown', event => {
-            if (event.key.toLowerCase() === 's' && !event.repeat)
+            if (event.key.toLowerCase() === 's')
                 this.saveRequested = true;
+        });
+        window.addEventListener('keyup', event => {
+            if (event.key.toLowerCase() === 's')
+                this.saveRequested = false;
         });
     }
 
@@ -75,8 +78,6 @@ export class RenderingPipelineDatasetGather {
 
         this.#ensureTrainingResources();
 
-        const save = this.saveRequested;
-        this.saveRequested = false;
 
         this.renderer.render(
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
@@ -86,8 +87,13 @@ export class RenderingPipelineDatasetGather {
             { color: this.depthExportTexture },
             this.directDepthTexture_A
         );
-        if (save)
-            await this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'noise');
+
+        let noiseColor, noiseDepth;
+        if (this.saveRequested) {
+            await this.device.queue.onSubmittedWorkDone();
+            noiseColor = await this.image_sampler.readTexturePixels(this.directColorTexture_A);
+            noiseDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
+        }
 
         this.ground_truth_renderer.render(
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
@@ -97,9 +103,13 @@ export class RenderingPipelineDatasetGather {
             { color: this.depthExportTexture },
             this.directDepthTexture_A
         );
-        if (save) {
-            await this.image_sampler.savePair(this.directColorTexture_A, this.depthExportTexture, 'gt');
-            this.image_sampler.counter++;
+
+        if (this.saveRequested) {
+            await this.device.queue.onSubmittedWorkDone();
+            const gtColor = await this.image_sampler.readTexturePixels(this.directColorTexture_A);
+            const gtDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
+            this.image_sampler.queueSave(noiseColor, noiseDepth, 'noise', false);
+            this.image_sampler.queueSave(gtColor, gtDepth, 'gt', true);
         }
 
         this.compositor.render(

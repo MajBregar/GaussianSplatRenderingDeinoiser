@@ -53,7 +53,7 @@ scene.addChild(camera);
 
 
 //rendering setup
-const renderingPipeline = new RenderingPipelineSingleFrameInferrence({
+const renderingPipeline = new RenderingPipelineDatasetGather({
     device,
     context,
     format,
