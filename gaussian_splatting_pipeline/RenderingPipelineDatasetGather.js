@@ -67,6 +67,7 @@ export class RenderingPipelineDatasetGather {
     update(_t, _dt) {}
 
     resize(width, height) {
+        console.log("Pipeline Resize Called");
         this.camera.getComponentOfType(Camera).aspect = width / height;
     }
 
@@ -110,7 +111,7 @@ export class RenderingPipelineDatasetGather {
             const gtDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
             this.image_sampler.queueSave(noiseColor, noiseDepth, 'noise', false);
             this.image_sampler.queueSave(gtColor, gtDepth, 'gt', true);
-            await this.image_sampler._saveChain;  // stall until both files are written
+            await this.image_sampler._saveChain; //stall pipeline until saved
         }
 
         this.compositor.render(

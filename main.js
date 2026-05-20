@@ -5,6 +5,8 @@ import { ResizeSystem } from 'engine/systems/ResizeSystem.js';
 import { UpdateSystem } from 'engine/systems/UpdateSystem.js';
 import {Camera, Node, Transform} from 'engine/core.js';
 import { TouchController } from 'engine/controllers/TouchController.js';
+import { OrbitController } from 'engine/controllers/OrbitController.js';
+import { AutomaticController } from 'engine/controllers/AutomaticController.js';
 
 import { parseSplats } from './gaussian_splatting_pipeline/file_handling/parseSplats.js';
 import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
@@ -17,6 +19,7 @@ import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
+import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
 const MODEL_NAME = '/models/RecurrentDenoisingAutoencoder.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
@@ -47,13 +50,29 @@ const splatContainer = new Node();
 scene.addChild(splatContainer);
 
 const camera = new Node();
-camera.addComponent(new Transform());
+
+const start_camera_transform = new Transform({
+    translation: [0, 0, 1],
+});
+
+//const camera_controller = new TouchController(camera, canvas);
+const camera_controller = new AutomaticController(camera, canvas, {
+    rotationRate: [0.001, 0.001, 0.0005],
+    angles: [20, 0, 180],
+})
+
+camera.addComponent(start_camera_transform);
+
+
 camera.addComponent(new Camera());
-camera.addComponent(new TouchController(camera, canvas));
+camera.addComponent(camera_controller);
+
 scene.addChild(camera);
 
 
 //rendering setup
+const performanceTracker = new PerformanceTracker();
+
 const renderingPipeline = new RenderingPipelineModelInferrence({
     device,
     context,
@@ -61,7 +80,8 @@ const renderingPipeline = new RenderingPipelineModelInferrence({
     canvas,
     scene,
     camera,
-    onnxModel
+    onnxModel,
+    performanceTracker
 });
 
 
@@ -179,30 +199,45 @@ function update(t, dt) {
 
 
 
+const perf_log = [];
+
+function downloadPerfCSV() {
+    if (perf_log.length === 0) return;
+    const headers = Object.keys(perf_log[0]);
+    const rows = perf_log.map(row => headers.map(h => row[h]).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'perf.csv';
+    a.click();
+}
+
+window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() === 'p') downloadPerfCSV();
+});
+
 async function render() {
     const completed = await renderingPipeline.render();
-
-    if (!completed) {
-        return;
-    }
+    if (!completed) return;
 
     frame_counter++;
     runtime_counter += renderingPipeline.last_render_duration_ms / 1000;
 
     if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
-        performance_stats.fps =
-            Math.round(frame_counter / runtime_counter).toString();
-
-        performance_stats.frame_time =
-            ((runtime_counter / frame_counter) * 1000).toFixed(2);
-
+        performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
+        performance_stats.frame_time = ((runtime_counter / frame_counter) * 1000).toFixed(2);
         frame_counter = 0;
         runtime_counter = 0;
+
+        const stats = renderingPipeline.perf.summary();
+        perf_log.push({ fps: performance_stats.fps, frame_time: performance_stats.frame_time, ...stats });
+        //console.log(stats);
     }
 }
 
 function resize({ displaySize: { width, height }}) {
-    //renderingPipeline.resize(width, height);
+    renderingPipeline.resize(width, height);
 }
 
 

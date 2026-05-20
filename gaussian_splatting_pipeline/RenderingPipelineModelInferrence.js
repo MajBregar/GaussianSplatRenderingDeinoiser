@@ -2,6 +2,8 @@ import { Camera } from 'engine/core.js';
 import { SplatRenderer } from './SplatRenderer.js';
 import { Compositor } from './Compositor.js';
 
+import { PerformanceTracker } from './PerformanceTracker.js';
+
 import { OnnxModelInitializer } from './OnnxModelInitializer.js';
 import { TextureToTensorConverter } from './TextureToTensorConverter.js';
 import { TensorToTextureConverter } from './TensorToTextureConverter.js';
@@ -19,11 +21,13 @@ export class RenderingPipelineModelInferrence {
         canvas,
         scene,
         camera,
-        onnxModel
+        onnxModel,
+        performanceTracker
     }) {
         this.device  = device;
         this.context = context;
         this.format  = format;
+        this.perf = performanceTracker ?? new PerformanceTracker();
 
         this.splatFormat  = 'rgba8unorm';
         this.baseChannels = 32;
@@ -39,17 +43,8 @@ export class RenderingPipelineModelInferrence {
 
         this.directColorTexture_A   = null;
         this.directDepthTexture_A   = null;
-        this.inferenceOutputTexture = null;
         this.inferenceInputBuffer   = null;
-
-        this.hiddenStates      = {};
-        this.hiddenReady       = false;
-        this.hiddenInputNames  = [];
-        this.hiddenOutputNames = [];
-
-        this.onnx_model     = onnxModel;
-        this.onnxModelReady = false;
-        this.runOptions     = null;
+        this.inferenceOutputTexture = null;
 
         this.inferenceInFlight       = false;
         this.last_render_timestamp   = 0;
@@ -58,21 +53,28 @@ export class RenderingPipelineModelInferrence {
 
         window.addEventListener('keydown', event => {
             if (event.key.toLowerCase() === 'r' && !event.repeat) {
-                console.log('[Pipeline] R → reset hidden state');
+                console.log('[Pipeline] reset hidden state');
                 this.#resetHidden();
             }
         });
 
+        this.onnx_model     = onnxModel;
+
+        this.hiddenStates      = {};
+        this.hiddenReady       = false;
+        this.hiddenInputNames  = [];
+        this.hiddenOutputNames = [];
+
         this.runOptions = {};
         this.hiddenInputNames  = this.onnx_model.session.inputNames.filter(n => /^h\d+_in$/.test(n)).sort();
         this.hiddenOutputNames = this.hiddenInputNames.map(n => n.replace('_in', '_out'));
+        this.onnxModelReady = true;
 
         // console.log('[Pipeline] hidden inputs :', this.hiddenInputNames);
         // console.log('[Pipeline] hidden outputs:', this.hiddenOutputNames);
         // console.log('[Pipeline] all inputs    :', this.onnx_model.session.inputNames);
         // console.log('[Pipeline] all outputs   :', this.onnx_model.session.outputNames);
 
-        this.onnxModelReady = true;
         console.log('[Pipeline] inputMetadata:', this.onnx_model.session.handler.inputMetadata);
         console.log('[Pipeline] inputMetadata:', this.onnx_model.session.handler.outputMetadata);
     }
@@ -110,20 +112,27 @@ export class RenderingPipelineModelInferrence {
         const width  = this.canvas.width;
         const height = this.canvas.height;
 
+        this.perf.begin('noisy_render');
         this.renderer.render(
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
+        await this.device.queue.onSubmittedWorkDone();
+        this.perf.end('noisy_render');
 
+
+        this.perf.begin('texture_to_tensor_noisy');
         this.textureToTensorConverter.render(
             this.directColorTexture_A,
             this.directDepthTexture_A,
             this.inferenceInputBuffer,
             width, height
         );
-
         await this.device.queue.onSubmittedWorkDone();
+        this.perf.end('texture_to_tensor_noisy');
 
+
+        this.perf.begin('inferrence_tensor_prep');
         const inputTensor = new ort.Tensor({
             location : 'gpu-buffer',
             gpuBuffer: this.inferenceInputBuffer,
@@ -153,7 +162,10 @@ export class RenderingPipelineModelInferrence {
                 );
             }
         }
+        this.perf.end('inferrence_tensor_prep');
 
+
+        this.perf.begin('inferrence');
         let results;
         try {
             results = await this.onnx_model.session.run(feeds, this.runOptions);
@@ -161,11 +173,12 @@ export class RenderingPipelineModelInferrence {
             inputTensor.dispose?.();
             for (const name of this.hiddenInputNames) feeds[name]?.dispose?.();
         }
-
         await this.device.queue.onSubmittedWorkDone();
+        this.perf.end('inferrence');
 
+
+        this.perf.begin('hidden_tensor_output_copy');
         const enc = this.device.createCommandEncoder();
-
         for (const outName of this.hiddenOutputNames) {
             const key    = outName.replace('_out', '');
             const tensor = results[outName];
@@ -187,12 +200,13 @@ export class RenderingPipelineModelInferrence {
             );
             tensor.dispose?.();
         }
-
         this.device.queue.submit([enc.finish()]);
         this.hiddenReady = true;
-
         await this.device.queue.onSubmittedWorkDone();
+        this.perf.end('hidden_tensor_output_copy');
 
+
+        this.perf.begin('output_tensor_to_texture');
         const outMain = results['output'];
         if (!outMain?.gpuBuffer)
             throw new Error("Main output 'output' is not GPU-backed");
@@ -203,15 +217,19 @@ export class RenderingPipelineModelInferrence {
             width, height
         );
         await this.device.queue.onSubmittedWorkDone();
-
         outMain.dispose?.();
+        this.perf.end('output_tensor_to_texture');
 
+
+        this.perf.begin('screen_render');
         this.compositor.render(
             { color: this.context.getCurrentTexture() },
             this.inferenceOutputTexture,
             1.0
         );
         await this.device.queue.onSubmittedWorkDone();
+        this.perf.end('screen_render');
+
     }
 
     #inferHiddenDims(inputName, width, height) {
