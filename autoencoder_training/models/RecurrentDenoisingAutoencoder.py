@@ -1,9 +1,6 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pathlib import Path
-
 
 
 def _norm(num_channels: int, num_groups: int = 8) -> nn.GroupNorm:
@@ -11,6 +8,9 @@ def _norm(num_channels: int, num_groups: int = 8) -> nn.GroupNorm:
         num_groups //= 2
     return nn.GroupNorm(num_groups, num_channels)
 
+
+def _make_channels(base: int, n_stages: int) -> list[int]:
+    return [max(base, int(base * (4/3)**i)) for i in range(n_stages)]
 
 
 class ConvNormRelu(nn.Module):
@@ -22,23 +22,22 @@ class ConvNormRelu(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         return self.block(x)
 
 
 class RecurrentBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
-        self.conv1 = ConvNormRelu(in_ch,           out_ch)
+        self.conv1 = ConvNormRelu(in_ch, out_ch)
         self.conv2 = ConvNormRelu(out_ch + out_ch, out_ch)
-        self.conv3 = ConvNormRelu(out_ch,          out_ch)
+        self.conv3 = ConvNormRelu(out_ch, out_ch)
 
-    def forward(self, x: torch.Tensor, h_prev: torch.Tensor) -> torch.Tensor:
-        f     = self.conv1(x)
-        f     = torch.cat([f, h_prev], dim=1)
-        f     = self.conv2(f)
-        h_new = self.conv3(f)
-        return h_new
+    def forward(self, x, h_prev):
+        f = self.conv1(x)
+        f = torch.cat([f, h_prev], dim=1)
+        f = self.conv2(f)
+        return self.conv3(f)
 
 
 class EncoderStage(nn.Module):
@@ -48,50 +47,50 @@ class EncoderStage(nn.Module):
         self.rcnn = RecurrentBlock(out_ch, out_ch)
         self.pool = nn.MaxPool2d(2, 2)
 
-    def forward(self, x: torch.Tensor, h_prev: torch.Tensor):
-        f      = self.conv(x)
-        h_new  = self.rcnn(f, h_prev)
-        skip   = h_new
-        pooled = self.pool(h_new)
-        return skip, pooled, h_new
+    def forward(self, x, h_prev):
+        f     = self.conv(x)
+        h_new = self.rcnn(f, h_prev)
+        return h_new, self.pool(h_new), h_new
 
 
 class DecoderStage(nn.Module):
     def __init__(self, in_ch: int, skip_ch: int, out_ch: int):
         super().__init__()
         self.conv1 = ConvNormRelu(in_ch + skip_ch, out_ch)
-        self.conv2 = ConvNormRelu(out_ch,          out_ch)
+        self.conv2 = ConvNormRelu(out_ch, out_ch)
 
-    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+    def forward(self, x, skip):
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         x = torch.cat([x, skip], dim=1)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(self.conv1(x))
+
+
 
 
 
 class RecurrentDenoisingAutoencoder(nn.Module):
     def __init__(self, in_channels: int = 4, out_channels: int = 3, base: int = 32):
         super().__init__()
-        b = base
+        C = _make_channels(base, 5)
 
-        self.enc1 = EncoderStage(in_channels, b)
-        self.enc2 = EncoderStage(b,           b * 2) 
-        self.enc3 = EncoderStage(b * 2,       b * 4)
-        self.enc4 = EncoderStage(b * 4,       b * 8)
+        self.enc1 = EncoderStage(in_channels, C[0])
+        self.enc2 = EncoderStage(C[0], C[1])
+        self.enc3 = EncoderStage(C[1], C[2])
+        self.enc4 = EncoderStage(C[2], C[3])
+        self.enc5 = EncoderStage(C[3], C[4])
 
         self.bottleneck = nn.Sequential(
-            ConvNormRelu(b * 8, b * 8),
-            ConvNormRelu(b * 8, b * 8),
+            ConvNormRelu(C[4], C[4]),
+            ConvNormRelu(C[4], C[4]),
         )
 
-        self.dec4 = DecoderStage(b * 8, b * 8, b * 4)
-        self.dec3 = DecoderStage(b * 4, b * 4, b * 2)
-        self.dec2 = DecoderStage(b * 2, b * 2, b)
-        self.dec1 = DecoderStage(b,     b,      b)
+        self.dec5 = DecoderStage(C[4], C[4], C[3])
+        self.dec4 = DecoderStage(C[3], C[3], C[2])
+        self.dec3 = DecoderStage(C[2], C[2], C[1])
+        self.dec2 = DecoderStage(C[1], C[1], C[0])
+        self.dec1 = DecoderStage(C[0], C[0], C[0])
 
-        self.output_conv = nn.Conv2d(b, out_channels, kernel_size=1)
+        self.output_conv = nn.Conv2d(C[0], out_channels, kernel_size=1)
 
         self._init_weights()
 
@@ -101,27 +100,38 @@ class RecurrentDenoisingAutoencoder(nn.Module):
                 nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
+        nn.init.zeros_(self.output_conv.weight)
+        nn.init.zeros_(self.output_conv.bias)
 
-    def forward(
-        self,
-        x:  torch.Tensor,
-        h1: torch.Tensor,
-        h2: torch.Tensor,
-        h3: torch.Tensor,
-        h4: torch.Tensor,
-    ):
-        skip1, x, h1_out = self.enc1(x,  h1)
-        skip2, x, h2_out = self.enc2(x,  h2)
-        skip3, x, h3_out = self.enc3(x,  h3)
-        skip4, x, h4_out = self.enc4(x,  h4)
+    def make_hidden_states(self, batch, height, width, device):
+        C = _make_channels(self.enc1.conv.block[0].out_channels, 5)
+        return tuple(
+            torch.zeros(batch, C[i], height >> (i+1), width >> (i+1), device=device)
+            for i in range(5)
+        )
+
+    def forward(self, x, h1, h2, h3, h4, h5):
+        B, C, H, W = x.shape
+        pH = (H + 31) // 32 * 32
+        pW = (W + 31) // 32 * 32
+        x = F.pad(x, (0, pW - W, 0, pH - H))
+        rgb = x[:, :3]
+
+        skip1, x, h1_out = self.enc1(x, h1)
+        skip2, x, h2_out = self.enc2(x, h2)
+        skip3, x, h3_out = self.enc3(x, h3)
+        skip4, x, h4_out = self.enc4(x, h4)
+        skip5, x, h5_out = self.enc5(x, h5)
 
         x = self.bottleneck(x)
-        
+
+        x = self.dec5(x, skip5)
         x = self.dec4(x, skip4)
         x = self.dec3(x, skip3)
         x = self.dec2(x, skip2)
         x = self.dec1(x, skip1)
 
-        output = torch.sigmoid(self.output_conv(x))
+        output = torch.sigmoid(self.output_conv(x) + rgb)
+        output = output[:, :, :H, :W]
 
-        return output, h1_out, h2_out, h3_out, h4_out
+        return output, h1_out, h2_out, h3_out, h4_out, h5_out

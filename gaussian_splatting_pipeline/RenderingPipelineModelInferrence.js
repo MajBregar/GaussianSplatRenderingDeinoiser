@@ -76,7 +76,7 @@ export class RenderingPipelineModelInferrence {
         // console.log('[Pipeline] all outputs   :', this.onnx_model.session.outputNames);
 
         console.log('[Pipeline] inputMetadata:', this.onnx_model.session.handler.inputMetadata);
-        console.log('[Pipeline] inputMetadata:', this.onnx_model.session.handler.outputMetadata);
+        console.log('[Pipeline] outputMetadata:', this.onnx_model.session.handler.outputMetadata);
     }
 
     update(_t, _dt) {}
@@ -233,38 +233,26 @@ export class RenderingPipelineModelInferrence {
     }
 
     #inferHiddenDims(inputName, width, height) {
+        //only for my current model that pads with multiples of 32
+        const pH = Math.ceil(height / 32) * 32;
+        const pW = Math.ceil(width  / 32) * 32;
+
+        const match = inputName.match(/^h(\d+)_in$/);
+        if (!match) throw new Error(`Cannot infer dims for '${inputName}'`);
+
+        const level = parseInt(match[1], 10) - 1;
+        const spatialScale = 1 << level;
+
         const allMeta = this.onnx_model.session.handler?.inputMetadata;
         const meta = Array.isArray(allMeta)
             ? allMeta.find(m => m.name === inputName)
             : null;
 
-        if (meta?.shape) {
-            return meta.shape.map((d, i) => {
-                if (typeof d === 'number' && d > 0) return d;
-                if (i === 0) return 1;
-                if (i === 1) return 1;
-                const channels = meta.shape[1];
-                const scale    = typeof channels === 'number'
-                    ? Math.round(channels / this.baseChannels)
-                    : 1;
-                if (i === 2) return Math.floor(height / scale);
-                if (i === 3) return Math.floor(width  / scale);
-                return 1;
-            });
-        }
+        const channels = (meta?.shape?.[1] && typeof meta.shape[1] === 'number')
+            ? meta.shape[1]
+            : this.baseChannels * spatialScale;
 
-        const match = inputName.match(/^h(\d+)_in$/);
-        if (match) {
-            const level   = parseInt(match[1], 10) - 1;
-            const scale   = 1 << level;
-            const ch      = this.baseChannels * scale;
-            const scaledH = Math.floor(height / scale);
-            const scaledW = Math.floor(width  / scale);
-            console.warn(`[Pipeline] no metadata for '${inputName}', falling back to guessed dims [1,${ch},${scaledH},${scaledW}]`);
-            return [1, ch, scaledH, scaledW];
-        }
-
-        throw new Error(`Cannot infer dims for hidden input '${inputName}'`);
+        return [1, channels, pH / spatialScale, pW / spatialScale];
     }
 
     #mkBuf(size) {

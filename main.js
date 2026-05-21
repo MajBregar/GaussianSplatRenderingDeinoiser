@@ -55,11 +55,11 @@ const start_camera_transform = new Transform({
     translation: [0, 0, 1],
 });
 
-//const camera_controller = new TouchController(camera, canvas);
-const camera_controller = new AutomaticController(camera, canvas, {
-    rotationRate: [0.001, 0.001, 0.0005],
-    angles: [20, 0, 180],
-})
+const camera_controller = new TouchController(camera, canvas);
+// const camera_controller = new AutomaticController(camera, canvas, {
+//     rotationRate: [0.0005, 0.0005, 0.0001],
+//     angles: [20, 0, 180],
+// })
 
 camera.addComponent(start_camera_transform);
 
@@ -170,7 +170,7 @@ if (renderingPipeline.image_sampler) {
     };
 
 
-    gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 1000).name('Sample Limit').listen();
+    gui.add(renderingPipeline.image_sampler, 'sample_limit', 1, 2000).name('Sample Limit').listen();
     const sampleCountController = gui.add(renderingPipeline.image_sampler, 'counter').name("Sampled Frames").listen();
     makeGUIControllerReadOnly(sampleCountController);
 
@@ -217,12 +217,32 @@ window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'p') downloadPerfCSV();
 });
 
+const ENABLE_FREEZING = false;
+const FREEZE_EVERY_N_FRAMES = 20;
+const FREEZE_DURATION_FRAMES = 10;
+let trueFrameCounter = 0;
+let isFrozen = false;
+let freezeFramesRemaining = 0;
+
 async function render() {
     const completed = await renderingPipeline.render();
     if (!completed) return;
 
     frame_counter++;
+    trueFrameCounter++;
     runtime_counter += renderingPipeline.last_render_duration_ms / 1000;
+
+    if (!isFrozen && trueFrameCounter % FREEZE_EVERY_N_FRAMES === 0 && ENABLE_FREEZING) {
+        isFrozen = true;
+        freezeFramesRemaining = FREEZE_DURATION_FRAMES;
+        camera_controller.togglePause();
+    } else if (isFrozen) {
+        freezeFramesRemaining--;
+        if (freezeFramesRemaining <= 0) {
+            isFrozen = false;
+            camera_controller.togglePause();
+        }
+    }
 
     if (runtime_counter >= UPDATE_FRAME_STATS_EVERY_N_SECONDS) {
         performance_stats.fps = Math.round(frame_counter / runtime_counter).toString();
@@ -230,9 +250,10 @@ async function render() {
         frame_counter = 0;
         runtime_counter = 0;
 
-        const stats = renderingPipeline.perf.summary();
-        perf_log.push({ fps: performance_stats.fps, frame_time: performance_stats.frame_time, ...stats });
-        //console.log(stats);
+        if (renderingPipeline.perf){
+            const stats = renderingPipeline.perf.summary();
+            perf_log.push({ fps: performance_stats.fps, frame_time: performance_stats.frame_time, ...stats });
+        }
     }
 }
 

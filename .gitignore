@@ -35,10 +35,8 @@ autoencoder_training/*.npy
 autoencoder_training/*.pt
 autoencoder_training/*.pth
 autoencoder_training/*.ckpt
-autoencoder_training/dataset
-autoencoder_training/dataset_recurrent
-autoencoder_training/model_output
-autoencoder_training/model_output_recurrent
+autoencoder_training/dataset*
+autoencoder_training/model_output*
 
 # OS / editor
 .DS_Store

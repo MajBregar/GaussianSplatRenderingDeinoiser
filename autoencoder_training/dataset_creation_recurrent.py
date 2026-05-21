@@ -168,8 +168,8 @@ if __name__ == "__main__":
         description="Convert captured frames into sequence folders for recurrent denoiser training."
     )
     parser.add_argument("--images",     type=Path, required=True)
-    parser.add_argument("--out",        type=Path, default=Path("dataset_recurrent"))
-    parser.add_argument("--seq_stride", type=int,  default=25)
+    parser.add_argument("--out",        type=Path, default=Path("dataset_recurrent_orbit_cam"))
+    parser.add_argument("--seq_stride", type=int,  default=30)
     parser.add_argument("--eval_every", type=int,  default=5)
     parser.add_argument("--min_seq_len",type=int,  default=7)
 

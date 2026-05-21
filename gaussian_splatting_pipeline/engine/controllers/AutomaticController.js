@@ -43,6 +43,10 @@ export class AutomaticController {
         }
     }
 
+    togglePause() {
+        this.rotating = !this.rotating;
+    }
+
     update() {
         const transform = this.node.getComponentOfType(Transform);
         if (!transform) return;
