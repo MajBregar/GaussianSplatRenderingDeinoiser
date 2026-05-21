@@ -9,7 +9,7 @@ from utils.dataset_loading import load_dataset, load_dataset_no_depth
 from utils.evaluation import evaluate_model
 
 #from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
-from models.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+from training.unet.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
 
 TRAINING_EPOCHS = 3
 

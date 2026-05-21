@@ -13,7 +13,7 @@ const stochastic_splatting_code = await fetch(
     new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)
 ).then(response => response.text());
 
-export class RenderingPipelineModelInferrence {
+export class RenderingPipelineModelInferrenceUpscaling {
     constructor({
         device,
         context,
@@ -29,9 +29,12 @@ export class RenderingPipelineModelInferrence {
         this.format  = format;
         this.perf = performanceTracker ?? new PerformanceTracker();
 
+        this.INPUT_WIDTH  = 640;
+        this.INPUT_HEIGHT = 360;
+
         this.splatFormat  = 'rgba8unorm';
-        this.baseChannels = 24;
-        this.pad_factor = 8;
+        this.baseChannels = 32;
+        this.pad_factor   = 32;
 
         this.canvas = canvas;
         this.scene  = scene;
@@ -42,9 +45,12 @@ export class RenderingPipelineModelInferrence {
         this.textureToTensorConverter = new TextureToTensorConverter(device);
         this.tensorToTextureConverter = new TensorToTextureConverter(device);
 
-        this.directColorTexture_A   = null;
-        this.directDepthTexture_A   = null;
+        //360p
+        this.noisyColorTexture      = null;
+        this.noisyDepthTexture      = null;
         this.inferenceInputBuffer   = null;
+
+        //720p
         this.inferenceOutputTexture = null;
 
         this.inferenceInFlight       = false;
@@ -59,24 +65,18 @@ export class RenderingPipelineModelInferrence {
             }
         });
 
-        this.onnx_model     = onnxModel;
-
+        this.onnx_model        = onnxModel;
         this.hiddenStates      = {};
         this.hiddenReady       = false;
         this.hiddenInputNames  = [];
         this.hiddenOutputNames = [];
+        this.runOptions        = {};
 
-        this.runOptions = {};
         this.hiddenInputNames  = this.onnx_model.session.inputNames.filter(n => /^h\d+_in$/.test(n)).sort();
         this.hiddenOutputNames = this.hiddenInputNames.map(n => n.replace('_in', '_out'));
-        this.onnxModelReady = true;
+        this.onnxModelReady    = true;
 
-        // console.log('[Pipeline] hidden inputs :', this.hiddenInputNames);
-        // console.log('[Pipeline] hidden outputs:', this.hiddenOutputNames);
-        // console.log('[Pipeline] all inputs    :', this.onnx_model.session.inputNames);
-        // console.log('[Pipeline] all outputs   :', this.onnx_model.session.outputNames);
-
-        console.log('[Pipeline] inputMetadata:', this.onnx_model.session.handler.inputMetadata);
+        console.log('[Pipeline] inputMetadata:',  this.onnx_model.session.handler.inputMetadata);
         console.log('[Pipeline] outputMetadata:', this.onnx_model.session.handler.outputMetadata);
     }
 
@@ -88,8 +88,8 @@ export class RenderingPipelineModelInferrence {
     }
 
     async render() {
-        if (!this.onnxModelReady)    return false;
-        if (this.inferenceInFlight)  return false;
+        if (!this.onnxModelReady)   return false;
+        if (this.inferenceInFlight) return false;
 
         this.inferenceInFlight = true;
         const t0 = performance.now();
@@ -110,35 +110,37 @@ export class RenderingPipelineModelInferrence {
 
     async #renderFrame() {
         this.#ensureResources();
-        const width  = this.canvas.width;
-        const height = this.canvas.height;
 
+        const inputW = this.INPUT_WIDTH;
+        const inputH = this.INPUT_HEIGHT;
+
+        // render noisy at 360p
         this.perf.begin('noisy_render');
         this.renderer.render(
-            { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
+            { color: this.noisyColorTexture, depth: this.noisyDepthTexture },
             this.scene, this.camera
         );
         await this.device.queue.onSubmittedWorkDone();
         this.perf.end('noisy_render');
 
-
+        // convert 360p noisy textures to tensor
         this.perf.begin('texture_to_tensor_noisy');
         this.textureToTensorConverter.render(
-            this.directColorTexture_A,
-            this.directDepthTexture_A,
+            this.noisyColorTexture,
+            this.noisyDepthTexture,
             this.inferenceInputBuffer,
-            width, height
+            inputW, inputH
         );
         await this.device.queue.onSubmittedWorkDone();
         this.perf.end('texture_to_tensor_noisy');
 
-
+        // build feeds — input is 360p
         this.perf.begin('inferrence_tensor_prep');
         const inputTensor = new ort.Tensor({
             location : 'gpu-buffer',
             gpuBuffer: this.inferenceInputBuffer,
             type     : 'float32',
-            dims     : [1, 4, height, width],
+            dims     : [1, 4, inputH, inputW],
         });
 
         const feeds = { input: inputTensor };
@@ -155,7 +157,7 @@ export class RenderingPipelineModelInferrence {
                     dims,
                 });
             } else {
-                const dims = this.#inferHiddenDims(name, width, height);
+                const dims = this.#inferHiddenDims(name, inputW, inputH);
                 feeds[name] = new ort.Tensor(
                     'float32',
                     new Float32Array(dims.reduce((a, b) => a * b, 1)),
@@ -164,7 +166,6 @@ export class RenderingPipelineModelInferrence {
             }
         }
         this.perf.end('inferrence_tensor_prep');
-
 
         this.perf.begin('inferrence');
         let results;
@@ -176,7 +177,6 @@ export class RenderingPipelineModelInferrence {
         }
         await this.device.queue.onSubmittedWorkDone();
         this.perf.end('inferrence');
-
 
         this.perf.begin('hidden_tensor_output_copy');
         const enc = this.device.createCommandEncoder();
@@ -206,7 +206,6 @@ export class RenderingPipelineModelInferrence {
         await this.device.queue.onSubmittedWorkDone();
         this.perf.end('hidden_tensor_output_copy');
 
-
         this.perf.begin('output_tensor_to_texture');
         const outMain = results['output'];
         if (!outMain?.gpuBuffer)
@@ -215,12 +214,11 @@ export class RenderingPipelineModelInferrence {
         this.tensorToTextureConverter.render(
             outMain.gpuBuffer,
             this.inferenceOutputTexture,
-            width, height
+            this.canvas.width, this.canvas.height
         );
         await this.device.queue.onSubmittedWorkDone();
         outMain.dispose?.();
         this.perf.end('output_tensor_to_texture');
-
 
         this.perf.begin('screen_render');
         this.compositor.render(
@@ -230,11 +228,9 @@ export class RenderingPipelineModelInferrence {
         );
         await this.device.queue.onSubmittedWorkDone();
         this.perf.end('screen_render');
-
     }
 
     #inferHiddenDims(inputName, width, height) {
-        //only for my current model that pads with multiples of 2^k
         const pad_factor = this.pad_factor;
         const pH = Math.ceil(height / pad_factor) * pad_factor;
         const pW = Math.ceil(width  / pad_factor) * pad_factor;
@@ -242,11 +238,11 @@ export class RenderingPipelineModelInferrence {
         const match = inputName.match(/^h(\d+)_in$/);
         if (!match) throw new Error(`Cannot infer dims for '${inputName}'`);
 
-        const level = parseInt(match[1], 10) - 1;
+        const level        = parseInt(match[1], 10) - 1;
         const spatialScale = 1 << level;
 
         const allMeta = this.onnx_model.session.handler?.inputMetadata;
-        const meta = Array.isArray(allMeta)
+        const meta    = Array.isArray(allMeta)
             ? allMeta.find(m => m.name === inputName)
             : null;
 
@@ -272,16 +268,48 @@ export class RenderingPipelineModelInferrence {
     }
 
     #ensureResources() {
-        this.#resizeColorTexture();
-        this.#resizeDepthTexture();
+        this.#resizeNoisyColorTexture();
+        this.#resizeNoisyDepthTexture();
         this.#resizeInputBuffer();
         this.#resizeOutputTexture();
     }
 
+    #resizeNoisyColorTexture() {
+        const w = this.INPUT_WIDTH;
+        const h = this.INPUT_HEIGHT;
+        if (this.noisyColorTexture?.width === w &&
+            this.noisyColorTexture?.height === h) return;
+
+        this.noisyColorTexture?.destroy();
+        this.noisyColorTexture = this.device.createTexture({
+            size  : [w, h],
+            format: this.splatFormat,
+            usage :
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING   |
+                GPUTextureUsage.COPY_SRC,
+        });
+    }
+
+    #resizeNoisyDepthTexture() {
+        const w = this.INPUT_WIDTH;
+        const h = this.INPUT_HEIGHT;
+        if (this.noisyDepthTexture?.width === w &&
+            this.noisyDepthTexture?.height === h) return;
+
+        this.noisyDepthTexture?.destroy();
+        this.noisyDepthTexture = this.device.createTexture({
+            size  : [w, h],
+            format: 'depth24plus',
+            usage :
+                GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING   |
+                GPUTextureUsage.COPY_SRC,
+        });
+    }
+
     #resizeInputBuffer() {
-        const width  = this.canvas.width;
-        const height = this.canvas.height;
-        const size   = 1 * 4 * width * height * 4;
+        const size = 1 * 4 * this.INPUT_WIDTH * this.INPUT_HEIGHT * 4;
         if (this.inferenceInputBuffer?.size === size) return;
 
         this.inferenceInputBuffer?.destroy();
@@ -306,40 +334,6 @@ export class RenderingPipelineModelInferrence {
                 GPUTextureUsage.RENDER_ATTACHMENT |
                 GPUTextureUsage.TEXTURE_BINDING   |
                 GPUTextureUsage.STORAGE_BINDING   |
-                GPUTextureUsage.COPY_SRC,
-        });
-    }
-
-    #resizeColorTexture() {
-        const width  = this.canvas.width;
-        const height = this.canvas.height;
-        if (this.directColorTexture_A?.width  === width &&
-            this.directColorTexture_A?.height === height) return;
-
-        this.directColorTexture_A?.destroy();
-        this.directColorTexture_A = this.device.createTexture({
-            size  : [width, height],
-            format: this.splatFormat,
-            usage :
-                GPUTextureUsage.RENDER_ATTACHMENT |
-                GPUTextureUsage.TEXTURE_BINDING   |
-                GPUTextureUsage.COPY_SRC,
-        });
-    }
-
-    #resizeDepthTexture() {
-        const width  = this.canvas.width;
-        const height = this.canvas.height;
-        if (this.directDepthTexture_A?.width  === width &&
-            this.directDepthTexture_A?.height === height) return;
-
-        this.directDepthTexture_A?.destroy();
-        this.directDepthTexture_A = this.device.createTexture({
-            size  : [width, height],
-            format: 'depth24plus',
-            usage :
-                GPUTextureUsage.RENDER_ATTACHMENT |
-                GPUTextureUsage.TEXTURE_BINDING   |
                 GPUTextureUsage.COPY_SRC,
         });
     }

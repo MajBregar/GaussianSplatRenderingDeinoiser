@@ -1,4 +1,12 @@
 
+*/training_samples/*
+autoencoder_training/*.npy
+autoencoder_training/*.pt
+autoencoder_training/*.pth
+autoencoder_training/*.ckpt
+**dataset_recurrent*
+**/model_output*
+
 public/splats/debug_horizontal.splat
 public/splats/debug_vertical.splat
 public/splats/debug.splat
@@ -9,8 +17,6 @@ splats_local
 tmp/*
 .venv
 get_structure.ps1
-
-
 
 # Node / Vite
 node_modules/
@@ -30,13 +36,7 @@ __pycache__/
 # Generated samples / temporary files
 tmp/
 structure.txt
-autoencoder_training/training_samples/*
-autoencoder_training/*.npy
-autoencoder_training/*.pt
-autoencoder_training/*.pth
-autoencoder_training/*.ckpt
-autoencoder_training/dataset*
-autoencoder_training/model_output*
+
 
 # OS / editor
 .DS_Store

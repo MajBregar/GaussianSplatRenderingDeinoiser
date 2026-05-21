@@ -1,22 +1,24 @@
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import torch
 
-from models.RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
+from training.recurrent_upsampling.RecurrentDenoisingAutoencoderUpsampling import RecurrentDenoisingAutoencoderUpsampling, _make_channels
 
 CHECKPOINT_PATH  = Path("model_output_recurrent/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../public/models/RecurrentDenoisingAutoencoder.onnx")
+ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoderUpscaling.onnx")
 
-IN_CHANNELS  = 4
-OUT_CHANNELS = 3
-BASE         = 32
-HEIGHT       = 720
-WIDTH        = 1280
+IN_CHANNELS   = 4
+OUT_CHANNELS  = 3
+BASE          = 32
+INPUT_HEIGHT  = 360
+INPUT_WIDTH   = 640
 
 
-def load_model(checkpoint_path: Path, device: str) -> RecurrentDenoisingAutoencoder:
+def load_model(checkpoint_path: Path, device: str) -> RecurrentDenoisingAutoencoderUpsampling:
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = RecurrentDenoisingAutoencoder(
+    model = RecurrentDenoisingAutoencoderUpsampling(
         in_channels  = checkpoint.get("in_channels",  IN_CHANNELS),
         out_channels = checkpoint.get("out_channels", OUT_CHANNELS),
         base         = checkpoint.get("base_channels", BASE),
@@ -58,18 +60,19 @@ if __name__ == "__main__":
     model = load_model(CHECKPOINT_PATH, device)
     print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
-    hidden_shapes = infer_hidden_shapes(model, IN_CHANNELS, HEIGHT, WIDTH, device)
+    hidden_shapes = infer_hidden_shapes(model, IN_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH, device)
     for i, s in enumerate(hidden_shapes):
         print(f"h{i+1} shape: {tuple(s)}")
 
     dummy = (
-        torch.randn(1, IN_CHANNELS, HEIGHT, WIDTH, device=device),
+        torch.randn(1, IN_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH, device=device),
         *[torch.zeros(*s, device=device) for s in hidden_shapes],
     )
 
     with torch.no_grad():
         out, h1, h2, h3, h4, h5 = model(*dummy)
 
+    print(f"input:  {tuple(dummy[0].shape)}")
     print(f"output: {tuple(out.shape)}")
     print(f"h1:     {tuple(h1.shape)}")
     print(f"h2:     {tuple(h2.shape)}")
@@ -92,17 +95,17 @@ if __name__ == "__main__":
             "h3_in"  : {0: "batch", 2: "h3_height", 3: "h3_width"},
             "h4_in"  : {0: "batch", 2: "h4_height", 3: "h4_width"},
             "h5_in"  : {0: "batch", 2: "h5_height", 3: "h5_width"},
-            "output" : {0: "batch", 2: "height",    3: "width"},
-            "h1_out" : {0: "batch", 2: "h1_height", 3: "h1_width"},
-            "h2_out" : {0: "batch", 2: "h2_height", 3: "h2_width"},
-            "h3_out" : {0: "batch", 2: "h3_height", 3: "h3_width"},
-            "h4_out" : {0: "batch", 2: "h4_height", 3: "h4_width"},
-            "h5_out" : {0: "batch", 2: "h5_height", 3: "h5_width"},
+            "output" : {0: "batch", 2: "out_height", 3: "out_width"},
+            "h1_out" : {0: "batch", 2: "h1_height",  3: "h1_width"},
+            "h2_out" : {0: "batch", 2: "h2_height",  3: "h2_width"},
+            "h3_out" : {0: "batch", 2: "h3_height",  3: "h3_width"},
+            "h4_out" : {0: "batch", 2: "h4_height",  3: "h4_width"},
+            "h5_out" : {0: "batch", 2: "h5_height",  3: "h5_width"},
         },
         opset_version       = 18,
         external_data       = False,
         do_constant_folding = True,
-        dynamo              = False,   # force legacy exporter
+        dynamo              = False,
     )
 
     print(f"Exported ONNX model to: {ONNX_OUTPUT_PATH}")

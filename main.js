@@ -13,15 +13,17 @@ import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
 import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
 
 import { RenderingPipelineDatasetGather } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGather.js';
-import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrence.js';
+import { RenderingPipelineDatasetGatherDownsample } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGatherDownsample.js';
 
+import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrence.js';
+import { RenderingPipelineModelInferrenceUpscaling } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrenceUpscaling.js';
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoder.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderUpscaling.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -55,6 +57,7 @@ const start_camera_transform = new Transform({
     translation: [0, 0, 1],
 });
 
+const ENABLE_FREEZING = false;
 const camera_controller = new TouchController(camera, canvas);
 // const camera_controller = new AutomaticController(camera, canvas, {
 //     rotationRate: [0.0005, 0.0005, 0.0001],
@@ -73,7 +76,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrence({
+const renderingPipeline = new RenderingPipelineModelInferrenceUpscaling({
     device,
     context,
     format,
@@ -217,7 +220,6 @@ window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'p') downloadPerfCSV();
 });
 
-const ENABLE_FREEZING = false;
 const FREEZE_EVERY_N_FRAMES = 20;
 const FREEZE_DURATION_FRAMES = 10;
 let trueFrameCounter = 0;

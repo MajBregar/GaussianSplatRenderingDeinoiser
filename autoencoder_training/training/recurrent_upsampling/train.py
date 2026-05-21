@@ -6,46 +6,40 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from models.LightweightRecurrentDenoiser import LightweightRecurrentDenoiser
-from utils.dataset_loading import load_sequence_dataset
+from training.recurrent_upsampling.RecurrentDenoisingAutoencoderUpsampling import RecurrentDenoisingAutoencoderUpsampling, _make_channels
+from utils.dataset_loading import load_downsampled_sequence_dataset
 
 
-TRAINING_EPOCHS = 30          # lighter net converges faster
+TRAINING_EPOCHS = 150
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
-BATCH_SIZE      = 2           # lighter net can fit larger batches
-LR              = 1e-3
+BATCH_SIZE      = 1
+LR              = 8e-4
+ETA_LR_MIN      = 5e-5
 LR_WARMUP       = 10
 
-IN_CHANNELS  = 4             # update to match your actual input signals
+IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 24
+BASE         = 32
 
-# Dropped gamma compress — only needed for HDR/MC outliers
-# Kept gradient + temporal — both tied to recurrent learning, not MC noise
 W_SPATIAL  = 0.8
 W_GRADIENT = 0.1
 W_TEMPORAL = 0.1
 
-MODEL_OUTPUT_DIR = Path("model_output_recurrent_lightweight")
+MODEL_OUTPUT_DIR = Path("model_output_recurrent")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _gaussian_frame_weights(n: int) -> torch.Tensor:
-    """
-    Ramps weight toward later frames. Forces the RNN hidden state to
-    actually carry useful information forward — without this the network
-    learns to ignore recurrent connections and just denoise each frame
-    independently (paper §4.4).
-    """
     t = torch.linspace(-2.5, 0.0, n)
     w = torch.exp(-t ** 2)
     return w / w.max()
 
 
 def spatial_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    # Plain L1 — inputs assumed normalized [0,1], no HDR gamma needed
     return F.l1_loss(pred, target)
 
 
@@ -63,10 +57,6 @@ def _log_kernel(device: torch.device) -> torch.Tensor:
 
 
 def gradient_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """
-    HFEN edge loss — penalizes blurring of edges/fine detail.
-    Important when input has normals/reflections with sharp discontinuities.
-    """
     B, C, H, W = pred.shape
     device = pred.device
     if device not in _LOG_CACHE:
@@ -79,11 +69,6 @@ def gradient_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 def temporal_loss(preds: list[torch.Tensor], targets: list[torch.Tensor]) -> torch.Tensor:
-    """
-    Penalizes flicker by comparing frame-to-frame deltas of predictions vs
-    targets. Directly trains the recurrent blocks to suppress temporal noise
-    rather than just getting lucky with per-frame denoising (paper §4.4).
-    """
     if len(preds) < 2:
         return torch.tensor(0.0, device=preds[0].device)
     loss = sum(
@@ -113,36 +98,45 @@ def sequence_loss(
     return W_SPATIAL * L_s + W_GRADIENT * L_g + W_TEMPORAL * L_t
 
 
-def zero_hidden(batch_size: int, height: int, width: int, device: torch.device):
-    b = BASE
+def zero_hidden(batch_size: int, base: int, patch_h: int, patch_w: int, device: torch.device):
+    # hidden states sized to input (360p patch) resolution
+    C = _make_channels(base, 5)
     return (
-        torch.zeros(batch_size, b,     height,     width,     device=device),
-        torch.zeros(batch_size, b * 2, height // 2, width // 2, device=device),
-        torch.zeros(batch_size, b * 4, height // 4, width // 4, device=device),
+        torch.zeros(batch_size, C[0], patch_h,      patch_w,      device=device),
+        torch.zeros(batch_size, C[1], patch_h >> 1, patch_w >> 1, device=device),
+        torch.zeros(batch_size, C[2], patch_h >> 2, patch_w >> 2, device=device),
+        torch.zeros(batch_size, C[3], patch_h >> 3, patch_w >> 3, device=device),
+        torch.zeros(batch_size, C[4], patch_h >> 4, patch_w >> 4, device=device),
     )
 
 
-def save_checkpoint(model, optimizer, scheduler, epoch, train_loss, eval_loss, path):
+def save_checkpoint(model, optimizer, warmup_scheduler, cosine_scheduler, epoch, train_loss, eval_loss, path):
     torch.save({
-        "epoch":                epoch + 1,
-        "model_state_dict":     model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-        "train_loss":           train_loss,
-        "eval_loss":            eval_loss,
-        "in_channels":          IN_CHANNELS,
-        "out_channels":         OUT_CHANNELS,
-        "base_channels":        BASE,
-        "patch_size":           PATCH_SIZE,
-        "seq_len":              SEQ_LEN,
+        "epoch":                        epoch + 1,
+        "model_state_dict":             model.state_dict(),
+        "optimizer_state_dict":         optimizer.state_dict(),
+        "warmup_scheduler_state_dict":  warmup_scheduler.state_dict(),
+        "cosine_scheduler_state_dict":  cosine_scheduler.state_dict(),
+        "train_loss":                   train_loss,
+        "eval_loss":                    eval_loss,
+        "in_channels":                  IN_CHANNELS,
+        "out_channels":                 OUT_CHANNELS,
+        "base_channels":                BASE,
+        "patch_size":                   PATCH_SIZE,
+        "seq_len":                      SEQ_LEN,
     }, path)
 
 
-def load_checkpoint(path, model, optimizer, scheduler, device):
+def load_checkpoint(path, model, optimizer, warmup_scheduler, cosine_scheduler, device):
     ckpt = torch.load(path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    if "warmup_scheduler_state_dict" in ckpt:
+        warmup_scheduler.load_state_dict(ckpt["warmup_scheduler_state_dict"])
+    elif "scheduler_state_dict" in ckpt:
+        warmup_scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    if "cosine_scheduler_state_dict" in ckpt:
+        cosine_scheduler.load_state_dict(ckpt["cosine_scheduler_state_dict"])
     start_epoch = ckpt["epoch"]
     print(f"Resumed from {path} (epoch {start_epoch})")
     return start_epoch
@@ -159,11 +153,11 @@ def evaluate(model, loader, frame_weights, device) -> float:
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3 = zero_hidden(B, pH, pW, device)
+        h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
+            pred, h1, h2, h3, h4, h5 = model(xs[:, t], h1, h2, h3, h4, h5)
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -184,11 +178,14 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3 = zero_hidden(B, pH, pW, device)
+        h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
+            pred, h1, h2, h3, h4, h5 = model(xs[:, t], h1, h2, h3, h4, h5)
+            h1, h2, h3, h4, h5 = (
+                h1.detach(), h2.detach(), h3.detach(), h4.detach(), h5.detach()
+            )
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -213,17 +210,18 @@ if __name__ == "__main__":
     print(f"Device: {device}")
 
     print("Loading datasets...")
-    train_loader, eval_loader = load_sequence_dataset(
-        train_folder="dataset_recurrent_orbit_cam/train",
-        eval_folder="dataset_recurrent_orbit_cam/eval",
+    train_loader, eval_loader = load_downsampled_sequence_dataset(
+        train_folder="../../dataset_recurrent_orbit_cam/train",
+        eval_folder="../../dataset_recurrent_orbit_cam/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
-        target_size=(720, 1280),
+        input_size=(360, 640),    # noisy inputs at half res
+        target_size=(720, 1280),  # GT targets at full res
         patch_size=PATCH_SIZE,
         num_workers=4,
     )
 
-    model = LightweightRecurrentDenoiser(
+    model = RecurrentDenoisingAutoencoderUpsampling(
         in_channels=IN_CHANNELS,
         out_channels=OUT_CHANNELS,
         base=BASE,
@@ -240,7 +238,7 @@ if __name__ == "__main__":
         return 1.0
 
     warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
-    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=TRAINING_EPOCHS - LR_WARMUP, eta_min=1e-6)
+    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=TRAINING_EPOCHS - LR_WARMUP, eta_min=ETA_LR_MIN)
 
     frame_weights = _gaussian_frame_weights(SEQ_LEN)
     print(f"Frame weights: {[f'{w:.3f}' for w in frame_weights.tolist()]}")
@@ -248,7 +246,7 @@ if __name__ == "__main__":
     start_epoch = 0
     resume_path = MODEL_OUTPUT_DIR / "autoencoder_latest.pt"
     if resume_path.exists():
-        start_epoch = load_checkpoint(resume_path, model, optimizer, warmup_scheduler, device)
+        start_epoch = load_checkpoint(resume_path, model, optimizer, warmup_scheduler, cosine_scheduler, device)
 
     best_eval_loss = float("inf")
     at_epoch = start_epoch
@@ -258,7 +256,9 @@ if __name__ == "__main__":
         for epoch in range(start_epoch, TRAINING_EPOCHS):
             at_epoch = epoch
 
-            train_loss = train_one_epoch(model, train_loader, optimizer, frame_weights, device, epoch)
+            train_loss = train_one_epoch(
+                model, train_loader, optimizer, frame_weights, device, epoch
+            )
 
             if epoch < LR_WARMUP:
                 warmup_scheduler.step()
@@ -273,9 +273,8 @@ if __name__ == "__main__":
                 f"lr={optimizer.param_groups[0]['lr']:.2e}"
             )
 
-            # save latest every epoch for safe resume
             save_checkpoint(
-                model, optimizer, warmup_scheduler, epoch,
+                model, optimizer, warmup_scheduler, cosine_scheduler, epoch,
                 train_loss, eval_loss,
                 MODEL_OUTPUT_DIR / "autoencoder_latest.pt",
             )
@@ -283,7 +282,7 @@ if __name__ == "__main__":
             if eval_loss < best_eval_loss:
                 best_eval_loss = eval_loss
                 save_checkpoint(
-                    model, optimizer, warmup_scheduler, epoch,
+                    model, optimizer, warmup_scheduler, cosine_scheduler, epoch,
                     train_loss, eval_loss,
                     MODEL_OUTPUT_DIR / "autoencoder_best.pt",
                 )
@@ -292,7 +291,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
         save_checkpoint(
-            model, optimizer, warmup_scheduler, at_epoch,
+            model, optimizer, warmup_scheduler, cosine_scheduler, at_epoch,
             0.0, 0.0,
             MODEL_OUTPUT_DIR / "autoencoder_interrupted.pt",
         )

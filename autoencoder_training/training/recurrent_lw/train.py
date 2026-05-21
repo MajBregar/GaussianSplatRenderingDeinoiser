@@ -7,26 +7,27 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from models.RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
+from training.recurrent_lw.RecurrentDenoisingAutoencoderLW import RecurrentDenoisingAutoencoderLW, _make_channels
 from utils.dataset_loading import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 153
+TRAINING_EPOCHS = 50
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
-BATCH_SIZE      = 1
-LR              = 1e-3
+BATCH_SIZE      = 2
+LR              = 8e-4
+ETA_LR_MIN      = 5e-5
 LR_WARMUP       = 10
 
 IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 32
+BASE         = 24
 
 W_SPATIAL  = 0.8
 W_GRADIENT = 0.1
 W_TEMPORAL = 0.1
 
-MODEL_OUTPUT_DIR = Path("model_output_recurrent")
+MODEL_OUTPUT_DIR = Path("model_output_recurrent_lw")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -96,13 +97,11 @@ def sequence_loss(
 
 
 def zero_hidden(batch_size: int, base: int, patch_h: int, patch_w: int, device: torch.device):
-    C = _make_channels(base, 5)
+    C = _make_channels(base, 3)
     return (
         torch.zeros(batch_size, C[0], patch_h,      patch_w,      device=device),
         torch.zeros(batch_size, C[1], patch_h >> 1, patch_w >> 1, device=device),
         torch.zeros(batch_size, C[2], patch_h >> 2, patch_w >> 2, device=device),
-        torch.zeros(batch_size, C[3], patch_h >> 3, patch_w >> 3, device=device),
-        torch.zeros(batch_size, C[4], patch_h >> 4, patch_w >> 4, device=device),
     )
 
 
@@ -143,11 +142,11 @@ def evaluate(model, loader, frame_weights, device) -> float:
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
+        h1, h2, h3 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3, h4, h5 = model(xs[:, t], h1, h2, h3, h4, h5)
+            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -168,14 +167,12 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
+        h1, h2, h3 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3, h4, h5 = model(xs[:, t], h1, h2, h3, h4, h5)
-            h1, h2, h3, h4, h5 = (
-                h1.detach(), h2.detach(), h3.detach(), h4.detach(), h5.detach()
-            )
+            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
+            h1, h2, h3 = h1.detach(), h2.detach(), h3.detach()
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -210,7 +207,7 @@ if __name__ == "__main__":
         num_workers=4,
     )
 
-    model = RecurrentDenoisingAutoencoder(
+    model = RecurrentDenoisingAutoencoderLW(
         in_channels=IN_CHANNELS,
         out_channels=OUT_CHANNELS,
         base=BASE,
@@ -227,7 +224,7 @@ if __name__ == "__main__":
         return 1.0
 
     warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
-    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=TRAINING_EPOCHS - LR_WARMUP, eta_min=1e-6)
+    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=TRAINING_EPOCHS - LR_WARMUP, eta_min=ETA_LR_MIN)
 
     frame_weights = _gaussian_frame_weights(SEQ_LEN)
     print(f"Frame weights: {[f'{w:.3f}' for w in frame_weights.tolist()]}")
