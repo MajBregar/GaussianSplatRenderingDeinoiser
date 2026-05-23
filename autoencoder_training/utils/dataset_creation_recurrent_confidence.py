@@ -18,23 +18,44 @@ def depth_rgb_to_f32(path: str | Path) -> np.ndarray:
     return depth.astype(np.float32)
 
 
+def confidence_rgb_to_f32(path: str | Path) -> np.ndarray:
+    img = Image.open(path).convert("RGB")
+    rgb = np.asarray(img, dtype=np.float32)
+    return (rgb[..., 0] / 255.0).astype(np.float32)
+
+
 def save_depth_npy(input_png: str | Path, output_npy: str | Path) -> None:
     np.save(output_npy, depth_rgb_to_f32(input_png))
 
 
+def save_confidence_npy(input_png: str | Path, output_npy: str | Path) -> None:
+    np.save(output_npy, confidence_rgb_to_f32(input_png))
+
+
 def _parse_filename(path: Path) -> dict | None:
     match = re.match(r"(.+?)_(noise|gt)_(color|depth)_(\d+)\.png$", path.name)
-    if not match:
-        return None
-    model_name, image_name, kind, sample_id = match.groups()
-    return {
-        "model_name": model_name,
-        "image_name": image_name,
-        "kind":       kind,
-        "sample_id":  sample_id,
-        "path":       path,
-    }
+    if match:
+        model_name, image_name, kind, sample_id = match.groups()
+        return {
+            "model_name": model_name,
+            "image_name": image_name,
+            "kind":       f"{image_name}_{kind}",
+            "sample_id":  sample_id,
+            "path":       path,
+        }
 
+    match = re.match(r"(.+?)_confidence_(\d+)\.png$", path.name)
+    if match:
+        model_name, sample_id = match.groups()
+        return {
+            "model_name": model_name,
+            "image_name": "confidence",
+            "kind":       "confidence",
+            "sample_id":  sample_id,
+            "path":       path,
+        }
+
+    return None
 
 def _is_image_valid(path: Path) -> bool:
     try:
@@ -51,6 +72,7 @@ def generate_sequence_dataset(
     seq_stride:    int   = 50,
     eval_every:    int   = 5,
     min_seq_len:   int   = 7,
+    require_confidence: bool = True,
 ) -> None:
     image_folder  = Path(image_folder)
     output_folder = Path(output_folder)
@@ -66,13 +88,16 @@ def generate_sequence_dataset(
             continue
 
         sid = parsed["sample_id"]
-        key = f"{parsed['image_name']}_{parsed['kind']}"
+        key = parsed["kind"]
 
         if sid not in samples:
             samples[sid] = {}
         samples[sid][key] = path
 
     required = {"noise_color", "noise_depth", "gt_color"}
+    if require_confidence:
+        required.add("confidence")
+
     valid: list[tuple[int, dict]] = []
     corrupted_count = 0
 
@@ -145,6 +170,8 @@ def generate_sequence_dataset(
         (seq_dir / "input").mkdir(parents=True, exist_ok=True)
         (seq_dir / "depth").mkdir(parents=True, exist_ok=True)
         (seq_dir / "target").mkdir(parents=True, exist_ok=True)
+        if require_confidence:
+            (seq_dir / "confidence").mkdir(parents=True, exist_ok=True)
 
         for frame_idx, (sid, files) in enumerate(chunk):
             frame_name = f"{frame_idx:04d}"
@@ -152,6 +179,9 @@ def generate_sequence_dataset(
             shutil.copy2(files["noise_color"], seq_dir / "input"  / f"{frame_name}.png")
             shutil.copy2(files["gt_color"],    seq_dir / "target" / f"{frame_name}.png")
             save_depth_npy(files["noise_depth"], seq_dir / "depth" / f"{frame_name}.npy")
+
+            if require_confidence and "confidence" in files:
+                save_confidence_npy(files["confidence"], seq_dir / "confidence" / f"{frame_name}.npy")
 
         if is_eval:
             eval_count += len(chunk)
@@ -167,18 +197,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Convert captured frames into sequence folders for recurrent denoiser training."
     )
-    parser.add_argument("--images",     type=Path, required=True)
-    parser.add_argument("--out",        type=Path, default=Path("dataset_recurrent_orbit_cam"))
-    parser.add_argument("--seq_stride", type=int,  default=30)
-    parser.add_argument("--eval_every", type=int,  default=5)
-    parser.add_argument("--min_seq_len",type=int,  default=10)
+    parser.add_argument("--images",      type=Path, required=True)
+    parser.add_argument("--out",         type=Path, default=Path("dataset_recurrent_orbit_cam"))
+    parser.add_argument("--seq_stride",  type=int,  default=30)
+    parser.add_argument("--eval_every",  type=int,  default=5)
+    parser.add_argument("--min_seq_len", type=int,  default=10)
+    parser.add_argument("--no_confidence", action="store_true", help="Skip confidence map loading even if present")
 
     args = parser.parse_args()
 
     generate_sequence_dataset(
-        image_folder  = args.images,
-        output_folder = args.out,
-        seq_stride    = args.seq_stride,
-        eval_every    = args.eval_every,
-        min_seq_len   = args.min_seq_len,
+        image_folder       = args.images,
+        output_folder      = args.out,
+        seq_stride         = args.seq_stride,
+        eval_every         = args.eval_every,
+        min_seq_len        = args.min_seq_len,
+        require_confidence = not args.no_confidence,
     )

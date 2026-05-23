@@ -1,15 +1,17 @@
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 
-from training.recurrent_lw.RecurrentDenoisingAutoencoderLW import RecurrentDenoisingAutoencoderLW, _make_channels
+from RecurrentDenoisingAutoencoderLW import RecurrentDenoisingAutoencoderLW, _make_channels
 
 CHECKPOINT_PATH  = Path("model_output_recurrent_lw/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../public/models/RecurrentDenoisingAutoencoderLW.onnx")
+ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoderLW.onnx")
 
 IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 24
+BASE         = 32
 HEIGHT       = 720
 WIDTH        = 1280
 
@@ -30,21 +32,22 @@ def load_model(checkpoint_path: Path, device: str) -> RecurrentDenoisingAutoenco
 
 
 def infer_hidden_shapes(model, in_channels, height, width, device):
-    C = _make_channels(BASE, 3)
-    pH = (height + 7) // 8 * 8
-    pW = (width  + 7) // 8 * 8
+    C = _make_channels(BASE, 4)
+    pH = (height + 15) // 16 * 16
+    pW = (width  + 15) // 16 * 16
 
     h_init = [
-        torch.zeros(1, C[0], pH,      pW,      device=device),
-        torch.zeros(1, C[1], pH >> 1, pW >> 1, device=device),
-        torch.zeros(1, C[2], pH >> 2, pW >> 2, device=device),
+        torch.zeros(1, C[0] // 2, pH,      pW,      device=device),
+        torch.zeros(1, C[1],      pH >> 1, pW >> 1, device=device),
+        torch.zeros(1, C[2],      pH >> 2, pW >> 2, device=device),
+        torch.zeros(1, C[3],      pH >> 3, pW >> 3, device=device),
     ]
 
     with torch.no_grad():
         x = torch.zeros(1, in_channels, height, width, device=device)
-        _, h1, h2, h3 = model(x, *h_init)
+        _, h1, h2, h3, h4 = model(x, *h_init)
 
-    return [h.shape for h in (h1, h2, h3)]
+    return [h.shape for h in (h1, h2, h3, h4)]
 
 
 if __name__ == "__main__":
@@ -66,12 +69,13 @@ if __name__ == "__main__":
     )
 
     with torch.no_grad():
-        out, h1, h2, h3 = model(*dummy)
+        out, h1, h2, h3, h4 = model(*dummy)
 
     print(f"output: {tuple(out.shape)}")
     print(f"h1:     {tuple(h1.shape)}")
     print(f"h2:     {tuple(h2.shape)}")
     print(f"h3:     {tuple(h3.shape)}")
+    print(f"h4:     {tuple(h4.shape)}")
 
     print(f"\nExporting to {ONNX_OUTPUT_PATH} ...")
 
@@ -79,17 +83,19 @@ if __name__ == "__main__":
         model,
         dummy,
         ONNX_OUTPUT_PATH.as_posix(),
-        input_names  = ["input", "h1_in", "h2_in", "h3_in"],
-        output_names = ["output", "h1_out", "h2_out", "h3_out"],
+        input_names  = ["input", "h1_in", "h2_in", "h3_in", "h4_in"],
+        output_names = ["output", "h1_out", "h2_out", "h3_out", "h4_out"],
         dynamic_axes = {
             "input"  : {0: "batch", 2: "height",    3: "width"},
             "h1_in"  : {0: "batch", 2: "h1_height", 3: "h1_width"},
             "h2_in"  : {0: "batch", 2: "h2_height", 3: "h2_width"},
             "h3_in"  : {0: "batch", 2: "h3_height", 3: "h3_width"},
+            "h4_in"  : {0: "batch", 2: "h4_height", 3: "h4_width"},
             "output" : {0: "batch", 2: "height",    3: "width"},
             "h1_out" : {0: "batch", 2: "h1_height", 3: "h1_width"},
             "h2_out" : {0: "batch", 2: "h2_height", 3: "h2_width"},
             "h3_out" : {0: "batch", 2: "h3_height", 3: "h3_width"},
+            "h4_out" : {0: "batch", 2: "h4_height", 3: "h4_width"},
         },
         opset_version       = 18,
         external_data       = False,

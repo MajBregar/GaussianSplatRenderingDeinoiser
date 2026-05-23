@@ -1,4 +1,6 @@
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import torch
 import torch.nn as nn
@@ -11,21 +13,21 @@ from training.recurrent_lw.RecurrentDenoisingAutoencoderLW import RecurrentDenoi
 from utils.dataset_loading import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 50
+TRAINING_EPOCHS = 100
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
 BATCH_SIZE      = 2
-LR              = 8e-4
+LR              = 7e-4
 ETA_LR_MIN      = 5e-5
 LR_WARMUP       = 10
 
 IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 24
+BASE         = 32
 
-W_SPATIAL  = 0.8
+W_SPATIAL  = 0.65
 W_GRADIENT = 0.1
-W_TEMPORAL = 0.1
+W_TEMPORAL = 0.25
 
 MODEL_OUTPUT_DIR = Path("model_output_recurrent_lw")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,35 +99,42 @@ def sequence_loss(
 
 
 def zero_hidden(batch_size: int, base: int, patch_h: int, patch_w: int, device: torch.device):
-    C = _make_channels(base, 3)
+    C = _make_channels(base, 4)
     return (
-        torch.zeros(batch_size, C[0], patch_h,      patch_w,      device=device),
-        torch.zeros(batch_size, C[1], patch_h >> 1, patch_w >> 1, device=device),
-        torch.zeros(batch_size, C[2], patch_h >> 2, patch_w >> 2, device=device),
+        torch.zeros(batch_size, C[0] // 2, patch_h,      patch_w,      device=device),
+        torch.zeros(batch_size, C[1],       patch_h >> 1, patch_w >> 1, device=device),
+        torch.zeros(batch_size, C[2],       patch_h >> 2, patch_w >> 2, device=device),
+        torch.zeros(batch_size, C[3],       patch_h >> 3, patch_w >> 3, device=device),
     )
 
 
-def save_checkpoint(model, optimizer, scheduler, epoch, train_loss, eval_loss, path):
+def save_checkpoint(model, optimizer, warmup_scheduler, cosine_scheduler, epoch, train_loss, eval_loss, path):
     torch.save({
-        "epoch":                epoch + 1,
-        "model_state_dict":     model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-        "train_loss":           train_loss,
-        "eval_loss":            eval_loss,
-        "in_channels":          IN_CHANNELS,
-        "out_channels":         OUT_CHANNELS,
-        "base_channels":        BASE,
-        "patch_size":           PATCH_SIZE,
-        "seq_len":              SEQ_LEN,
+        "epoch":                        epoch + 1,
+        "model_state_dict":             model.state_dict(),
+        "optimizer_state_dict":         optimizer.state_dict(),
+        "warmup_scheduler_state_dict":  warmup_scheduler.state_dict(),
+        "cosine_scheduler_state_dict":  cosine_scheduler.state_dict(),
+        "train_loss":                   train_loss,
+        "eval_loss":                    eval_loss,
+        "in_channels":                  IN_CHANNELS,
+        "out_channels":                 OUT_CHANNELS,
+        "base_channels":                BASE,
+        "patch_size":                   PATCH_SIZE,
+        "seq_len":                      SEQ_LEN,
     }, path)
 
 
-def load_checkpoint(path, model, optimizer, scheduler, device):
+def load_checkpoint(path, model, optimizer, warmup_scheduler, cosine_scheduler, device):
     ckpt = torch.load(path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    if "warmup_scheduler_state_dict" in ckpt:
+        warmup_scheduler.load_state_dict(ckpt["warmup_scheduler_state_dict"])
+    elif "scheduler_state_dict" in ckpt:
+        warmup_scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    if "cosine_scheduler_state_dict" in ckpt:
+        cosine_scheduler.load_state_dict(ckpt["cosine_scheduler_state_dict"])
     start_epoch = ckpt["epoch"]
     print(f"Resumed from {path} (epoch {start_epoch})")
     return start_epoch
@@ -142,11 +151,11 @@ def evaluate(model, loader, frame_weights, device) -> float:
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3 = zero_hidden(B, BASE, pH, pW, device)
+        h1, h2, h3, h4 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
+            pred, h1, h2, h3, h4 = model(xs[:, t], h1, h2, h3, h4)
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -167,12 +176,12 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
         ys = ys.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
-        h1, h2, h3 = zero_hidden(B, BASE, pH, pW, device)
+        h1, h2, h3, h4 = zero_hidden(B, BASE, pH, pW, device)
 
         preds, targets = [], []
         for t in range(T):
-            pred, h1, h2, h3 = model(xs[:, t], h1, h2, h3)
-            h1, h2, h3 = h1.detach(), h2.detach(), h3.detach()
+            pred, h1, h2, h3, h4 = model(xs[:, t], h1, h2, h3, h4)
+            h1, h2, h3, h4 = h1.detach(), h2.detach(), h3.detach(), h4.detach()
             preds.append(pred)
             targets.append(ys[:, t])
 
@@ -198,8 +207,8 @@ if __name__ == "__main__":
 
     print("Loading datasets...")
     train_loader, eval_loader = load_sequence_dataset(
-        train_folder="dataset_recurrent_orbit_cam/train",
-        eval_folder="dataset_recurrent_orbit_cam/eval",
+        train_folder="../../dataset_recurrent_zoom/train",
+        eval_folder="../../dataset_recurrent_zoom/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
         target_size=(720, 1280),
@@ -232,7 +241,7 @@ if __name__ == "__main__":
     start_epoch = 0
     resume_path = MODEL_OUTPUT_DIR / "autoencoder_latest.pt"
     if resume_path.exists():
-        start_epoch = load_checkpoint(resume_path, model, optimizer, warmup_scheduler, device)
+        start_epoch = load_checkpoint(resume_path, model, optimizer, warmup_scheduler, cosine_scheduler, device)
 
     best_eval_loss = float("inf")
     at_epoch = start_epoch
@@ -260,7 +269,7 @@ if __name__ == "__main__":
             )
 
             save_checkpoint(
-                model, optimizer, warmup_scheduler, epoch,
+                model, optimizer, warmup_scheduler, cosine_scheduler, epoch,
                 train_loss, eval_loss,
                 MODEL_OUTPUT_DIR / "autoencoder_latest.pt",
             )
@@ -268,7 +277,7 @@ if __name__ == "__main__":
             if eval_loss < best_eval_loss:
                 best_eval_loss = eval_loss
                 save_checkpoint(
-                    model, optimizer, warmup_scheduler, epoch,
+                    model, optimizer, warmup_scheduler, cosine_scheduler, epoch,
                     train_loss, eval_loss,
                     MODEL_OUTPUT_DIR / "autoencoder_best.pt",
                 )
@@ -277,7 +286,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
         save_checkpoint(
-            model, optimizer, warmup_scheduler, at_epoch,
+            model, optimizer, warmup_scheduler, cosine_scheduler, at_epoch,
             0.0, 0.0,
             MODEL_OUTPUT_DIR / "autoencoder_interrupted.pt",
         )

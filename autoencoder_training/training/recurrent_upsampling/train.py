@@ -13,11 +13,11 @@ from training.recurrent_upsampling.RecurrentDenoisingAutoencoderUpsampling impor
 from utils.dataset_loading import load_downsampled_sequence_dataset
 
 
-TRAINING_EPOCHS = 150
+TRAINING_EPOCHS = 100
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
 BATCH_SIZE      = 1
-LR              = 8e-4
+LR              = 7e-4
 ETA_LR_MIN      = 5e-5
 LR_WARMUP       = 10
 

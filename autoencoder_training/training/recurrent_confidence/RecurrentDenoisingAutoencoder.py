@@ -56,33 +56,41 @@ class EncoderStage(nn.Module):
 class DecoderStage(nn.Module):
     def __init__(self, in_ch: int, skip_ch: int, out_ch: int):
         super().__init__()
-        self.conv = ConvNormRelu(in_ch + skip_ch, out_ch)
+        self.conv1 = ConvNormRelu(in_ch + skip_ch, out_ch)
+        self.conv2 = ConvNormRelu(out_ch, out_ch)
 
     def forward(self, x, skip):
         x = F.interpolate(x, scale_factor=2, mode='nearest')
         x = torch.cat([x, skip], dim=1)
-        return self.conv(x)
+        return self.conv2(self.conv1(x))
 
 
-class RecurrentDenoisingAutoencoderLW(nn.Module):
 
+
+
+class RecurrentDenoisingAutoencoder(nn.Module):
     def __init__(self, in_channels: int = 4, out_channels: int = 3, base: int = 32):
         super().__init__()
-        C = _make_channels(base, 4)  # [32, 43, 57, 76]
+        C = _make_channels(base, 5)
 
-        self.enc1 = EncoderStage(in_channels, C[0] // 2)  # 16ch at full res
-        self.enc2 = EncoderStage(C[0] // 2,  C[1])        # 43ch at 1/2 res
-        self.enc3 = EncoderStage(C[1],        C[2])        # 57ch at 1/4 res
-        self.enc4 = EncoderStage(C[2],        C[3])        # 76ch at 1/8 res
+        self.enc1 = EncoderStage(in_channels, C[0])
+        self.enc2 = EncoderStage(C[0], C[1])
+        self.enc3 = EncoderStage(C[1], C[2])
+        self.enc4 = EncoderStage(C[2], C[3])
+        self.enc5 = EncoderStage(C[3], C[4])
 
-        self.bottleneck = ConvNormRelu(C[3], C[3])
+        self.bottleneck = nn.Sequential(
+            ConvNormRelu(C[4], C[4]),
+            ConvNormRelu(C[4], C[4]),
+        )
 
-        self.dec4 = DecoderStage(C[3],        C[3],        C[2])
-        self.dec3 = DecoderStage(C[2],        C[2],        C[1])
-        self.dec2 = DecoderStage(C[1],        C[1],        C[0] // 2)
-        self.dec1 = DecoderStage(C[0] // 2,  C[0] // 2,   C[0] // 2)
+        self.dec5 = DecoderStage(C[4], C[4], C[3])
+        self.dec4 = DecoderStage(C[3], C[3], C[2])
+        self.dec3 = DecoderStage(C[2], C[2], C[1])
+        self.dec2 = DecoderStage(C[1], C[1], C[0])
+        self.dec1 = DecoderStage(C[0], C[0], C[0])
 
-        self.output_conv = nn.Conv2d(C[0] // 2, out_channels, kernel_size=1)
+        self.output_conv = nn.Conv2d(C[0], out_channels, kernel_size=1)
 
         self._init_weights()
 
@@ -95,10 +103,17 @@ class RecurrentDenoisingAutoencoderLW(nn.Module):
         nn.init.zeros_(self.output_conv.weight)
         nn.init.zeros_(self.output_conv.bias)
 
-    def forward(self, x, h1, h2, h3, h4):
+    def make_hidden_states(self, batch, height, width, device):
+        C = _make_channels(self.enc1.conv.block[0].out_channels, 5)
+        return tuple(
+            torch.zeros(batch, C[i], height >> (i+1), width >> (i+1), device=device)
+            for i in range(5)
+        )
+
+    def forward(self, x, h1, h2, h3, h4, h5):
         B, C, H, W = x.shape
-        pH = (H + 15) // 16 * 16
-        pW = (W + 15) // 16 * 16
+        pH = (H + 31) // 32 * 32
+        pW = (W + 31) // 32 * 32
         x = F.pad(x, (0, pW - W, 0, pH - H))
         rgb = x[:, :3]
 
@@ -106,9 +121,11 @@ class RecurrentDenoisingAutoencoderLW(nn.Module):
         skip2, x, h2_out = self.enc2(x, h2)
         skip3, x, h3_out = self.enc3(x, h3)
         skip4, x, h4_out = self.enc4(x, h4)
+        skip5, x, h5_out = self.enc5(x, h5)
 
         x = self.bottleneck(x)
 
+        x = self.dec5(x, skip5)
         x = self.dec4(x, skip4)
         x = self.dec3(x, skip3)
         x = self.dec2(x, skip2)
@@ -117,4 +134,4 @@ class RecurrentDenoisingAutoencoderLW(nn.Module):
         output = torch.sigmoid(self.output_conv(x) + rgb)
         output = output[:, :, :H, :W]
 
-        return output, h1_out, h2_out, h3_out, h4_out
+        return output, h1_out, h2_out, h3_out, h4_out, h5_out

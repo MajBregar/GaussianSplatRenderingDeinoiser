@@ -1,10 +1,10 @@
 import { quat, vec3 } from 'glm';
 import { Transform } from '../core/Transform.js';
-
 export class AutomaticController {
 
-        constructor(node, domElement, {
+    constructor(node, domElement, {
         rotationRate = [0.01, 0, 0],
+        distanceRate = 0,
         target = [0, 0, 0],
         angles = [0, 0, 0],
         distance = 2,
@@ -12,8 +12,10 @@ export class AutomaticController {
         this.node = node;
         this.domElement = domElement;
         this.rotationRate = rotationRate;
+        this.distanceRate = distanceRate;
         this.rotating = false;
         this.target = vec3.clone(target);
+        this.distance = distance;
 
         this.rotation = quat.create();
         quat.rotateX(this.rotation, this.rotation, angles[0] * Math.PI / 180);
@@ -25,8 +27,6 @@ export class AutomaticController {
             transform = new Transform();
             node.addComponent(transform);
         }
-
-        this.distance = vec3.distance(transform.translation, this.target) || distance;
 
         this.initHandlers();
     }
@@ -47,6 +47,15 @@ export class AutomaticController {
         this.rotating = !this.rotating;
     }
 
+    pause() {
+        this.rotating = false;
+    }
+
+    resume() {
+        this.rotating = true;
+    }
+
+
     update() {
         const transform = this.node.getComponentOfType(Transform);
         if (!transform) return;
@@ -59,6 +68,8 @@ export class AutomaticController {
             quat.rotateZ(rot, rot, rz);
             quat.multiply(this.rotation, rot, this.rotation);
             quat.normalize(this.rotation, this.rotation);
+
+            this.distance += this.distanceRate;
         }
 
         const offset = vec3.transformQuat(vec3.create(), [0, 0, this.distance], this.rotation);

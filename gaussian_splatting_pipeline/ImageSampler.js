@@ -51,6 +51,36 @@ export class ImageSampler {
         });
     }
 
+    queueSaveSingle(imageData, image_name, incrementAfter = false) {
+        this._saveChain = this._saveChain.then(async () => {
+            if (!this.outputDirectoryHandle) return;
+            if (this.counter > this.sample_limit - 1) return;
+            const id = this.getId();
+            await this.#writePngToSelectedFolder(imageData,
+                `${this.file_prefix}_${image_name}_${id}.png`);
+            if (incrementAfter) this.counter++;
+        }).catch(e => {
+            console.log('Disk Write Busy - Skipping Frame');
+        });
+    }
+
+    queueSaveWithCamera(colorData, depthData, image_name, cameraMatrix, incrementAfter = false) {
+        this._saveChain = this._saveChain.then(async () => {
+            if (!this.outputDirectoryHandle) return;
+            if (this.counter > this.sample_limit - 1) return;
+            const id = this.getId();
+            await this.#writePngToSelectedFolder(colorData,
+                `${this.file_prefix}_${image_name}_color_${id}.png`);
+            await this.#writePngToSelectedFolder(depthData,
+                `${this.file_prefix}_${image_name}_depth_${id}.png`);
+            await this.#writeJsonToSelectedFolder(cameraMatrix,
+                `${this.file_prefix}_${image_name}_camera_${id}.json`);
+            if (incrementAfter) this.counter++;
+        }).catch(e => {
+            console.log('Disk Write Busy - Skipping Frame');
+        });
+    }
+
     async #readTexturePixels(texture) {
         const width  = texture.width;
         const height = texture.height;
@@ -97,6 +127,20 @@ export class ImageSampler {
 
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         if (!blob) throw new Error('Failed to encode PNG blob.');
+
+        const fileHandle = await this.outputDirectoryHandle.getFileHandle(filename, { create: true });
+        const writable   = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+    }
+
+    async #writeJsonToSelectedFolder(cameraMatrix, filename) {
+        const data = Array.isArray(cameraMatrix) || ArrayBuffer.isView(cameraMatrix)
+            ? Array.from(cameraMatrix)
+            : cameraMatrix;
+
+        const blob = new Blob([JSON.stringify({ camera_matrix: data }, null, 2)],
+            { type: 'application/json' });
 
         const fileHandle = await this.outputDirectoryHandle.getFileHandle(filename, { create: true });
         const writable   = await fileHandle.createWritable();

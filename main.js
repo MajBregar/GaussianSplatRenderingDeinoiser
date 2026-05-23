@@ -14,16 +14,18 @@ import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLo
 
 import { RenderingPipelineDatasetGather } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGather.js';
 import { RenderingPipelineDatasetGatherDownsample } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGatherDownsample.js';
+import { RenderingPipelineDatasetGatherConfidence } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGatherConfidence.js';
 
 import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrence.js';
 import { RenderingPipelineModelInferrenceUpscaling } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrenceUpscaling.js';
+import { RenderingPipelineModelInferrenceConfidence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrenceConfidence.js';
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderUpscaling.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderConfidence.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -54,14 +56,21 @@ scene.addChild(splatContainer);
 const camera = new Node();
 
 const start_camera_transform = new Transform({
-    translation: [0, 0, 1],
+    translation: [0, 0, 0],
 });
 
 const ENABLE_FREEZING = false;
+const FREEZE_EVERY_N_FRAMES = 9;
+const FREEZE_DURATION_FRAMES = 6;
+const LONG_FREEZE_EVERY_N_FREEZES = 10;
+const LONG_FREEZE_DURATION_FRAMES = 20;
+
 const camera_controller = new TouchController(camera, canvas);
 // const camera_controller = new AutomaticController(camera, canvas, {
 //     rotationRate: [0.0005, 0.0005, 0.0001],
 //     angles: [20, 0, 180],
+//     distance: 1,
+//     distanceRate: 0.00008
 // })
 
 camera.addComponent(start_camera_transform);
@@ -76,7 +85,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrenceUpscaling({
+const renderingPipeline = new RenderingPipelineModelInferrenceConfidence({
     device,
     context,
     format,
@@ -187,6 +196,13 @@ if (renderingPipeline.image_sampler) {
 // gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
 // gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
 
+gui.add(renderingPipeline.temporal_confidence, 'historyWeight', 0, 1).name("historyWeight");
+gui.add(renderingPipeline.temporal_confidence, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
+gui.add(renderingPipeline.temporal_confidence, 'depthThreshold', 0, 1).name("depthThreshold");
+gui.add(renderingPipeline.temporal_confidence, 'reprojectionDistancePixels', 0, 50).name("reprojectionDistancePixels");
+
+gui.add(renderingPipeline.temporal_confidence, 'colorHistLower', 0, 1).name("colorHistLower");
+gui.add(renderingPipeline.temporal_confidence, 'colorHistUpper', 0, 1).name("colorHistUpper");
 
 // render loop wrappers
 function update(t, dt) {
@@ -220,11 +236,11 @@ window.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'p') downloadPerfCSV();
 });
 
-const FREEZE_EVERY_N_FRAMES = 20;
-const FREEZE_DURATION_FRAMES = 10;
 let trueFrameCounter = 0;
+let movingFrameCounter = 0;
 let isFrozen = false;
 let freezeFramesRemaining = 0;
+let freezeCount = 0;
 
 async function render() {
     const completed = await renderingPipeline.render();
@@ -234,15 +250,20 @@ async function render() {
     trueFrameCounter++;
     runtime_counter += renderingPipeline.last_render_duration_ms / 1000;
 
-    if (!isFrozen && trueFrameCounter % FREEZE_EVERY_N_FRAMES === 0 && ENABLE_FREEZING) {
-        isFrozen = true;
-        freezeFramesRemaining = FREEZE_DURATION_FRAMES;
-        camera_controller.togglePause();
-    } else if (isFrozen) {
+    if (!isFrozen) {
+        movingFrameCounter++;
+        if (movingFrameCounter % FREEZE_EVERY_N_FRAMES === 0 && ENABLE_FREEZING) {
+            isFrozen = true;
+            freezeCount++;
+            const isLongFreeze = freezeCount % LONG_FREEZE_EVERY_N_FREEZES === 0;
+            freezeFramesRemaining = isLongFreeze ? LONG_FREEZE_DURATION_FRAMES : FREEZE_DURATION_FRAMES;
+            camera_controller.pause();
+        }
+    } else {
         freezeFramesRemaining--;
         if (freezeFramesRemaining <= 0) {
             isFrozen = false;
-            camera_controller.togglePause();
+            camera_controller.resume();
         }
     }
 

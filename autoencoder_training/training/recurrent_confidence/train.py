@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
-from utils.dataset_loading import load_sequence_dataset
+from load_dataset import load_sequence_dataset
 
 
 TRAINING_EPOCHS = 153
@@ -20,7 +20,7 @@ BATCH_SIZE      = 1
 LR              = 1e-3
 LR_WARMUP       = 10
 
-IN_CHANNELS  = 4
+IN_CHANNELS  = 5
 OUT_CHANNELS = 3
 BASE         = 32
 
@@ -133,16 +133,16 @@ def load_checkpoint(path, model, optimizer, scheduler, device):
     print(f"Resumed from {path} (epoch {start_epoch})")
     return start_epoch
 
-
 @torch.no_grad()
 def evaluate(model, loader, frame_weights, device) -> float:
     model.eval()
     total = 0.0
     frame_weights = frame_weights.to(device)
 
-    for xs, ys in tqdm(loader, desc="  Eval", leave=False):
+    for xs, ys, cs in tqdm(loader, desc="  Eval", leave=False):
         xs = xs.to(device, non_blocking=True)
         ys = ys.to(device, non_blocking=True)
+        cs = cs.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
         h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
@@ -165,9 +165,10 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
 
     progress = tqdm(loader, desc=f"Epoch {epoch + 1}/{TRAINING_EPOCHS}", unit="batch")
 
-    for xs, ys in progress:
+    for xs, ys, cs in progress:
         xs = xs.to(device, non_blocking=True)
         ys = ys.to(device, non_blocking=True)
+        cs = cs.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
         h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)

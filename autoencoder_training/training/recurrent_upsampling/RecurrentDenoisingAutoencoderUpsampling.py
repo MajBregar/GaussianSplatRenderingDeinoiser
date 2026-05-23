@@ -13,13 +13,27 @@ def _make_channels(base: int, n_stages: int) -> list[int]:
     return [max(base, int(base * (4/3)**i)) for i in range(n_stages)]
 
 
-class ConvNormRelu(nn.Module):
+def _icnr_init(tensor: torch.Tensor, scale: int = 2) -> None:
+    """
+    ICNR initialization for pixel shuffle convolutions.
+    Initializes weights so pixel shuffle starts behaving like nearest-neighbor
+    upsampling, then learns from there — eliminates checkerboard artifacts.
+    """
+    out_ch, in_ch, h, w = tensor.shape
+    sub = torch.zeros(out_ch // (scale ** 2), in_ch, h, w)
+    nn.init.kaiming_normal_(sub, a=0.1, nonlinearity='leaky_relu')
+    sub = sub.repeat_interleave(scale ** 2, dim=0)
+    with torch.no_grad():
+        tensor.copy_(sub)
+
+
+class ConvNormAct(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, kernel_size: int = 3, padding: int = 1):
         super().__init__()
         self.block = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, kernel_size, padding=padding, bias=False),
             _norm(out_ch),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.GELU(),
         )
 
     def forward(self, x):
@@ -29,9 +43,9 @@ class ConvNormRelu(nn.Module):
 class RecurrentBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
-        self.conv1 = ConvNormRelu(in_ch, out_ch)
-        self.conv2 = ConvNormRelu(out_ch + out_ch, out_ch)
-        self.conv3 = ConvNormRelu(out_ch, out_ch)
+        self.conv1 = ConvNormAct(in_ch, out_ch)
+        self.conv2 = ConvNormAct(out_ch + out_ch, out_ch)
+        self.conv3 = ConvNormAct(out_ch, out_ch)
 
     def forward(self, x, h_prev):
         f = self.conv1(x)
@@ -43,7 +57,7 @@ class RecurrentBlock(nn.Module):
 class EncoderStage(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
-        self.conv = ConvNormRelu(in_ch, out_ch)
+        self.conv = ConvNormAct(in_ch, out_ch)
         self.rcnn = RecurrentBlock(out_ch, out_ch)
         self.pool = nn.MaxPool2d(2, 2)
 
@@ -56,8 +70,8 @@ class EncoderStage(nn.Module):
 class DecoderStage(nn.Module):
     def __init__(self, in_ch: int, skip_ch: int, out_ch: int):
         super().__init__()
-        self.conv1 = ConvNormRelu(in_ch + skip_ch, out_ch)
-        self.conv2 = ConvNormRelu(out_ch, out_ch)
+        self.conv1 = ConvNormAct(in_ch + skip_ch, out_ch)
+        self.conv2 = ConvNormAct(out_ch, out_ch)
 
     def forward(self, x, skip):
         x = F.interpolate(x, scale_factor=2, mode='nearest')
@@ -65,12 +79,58 @@ class DecoderStage(nn.Module):
         return self.conv2(self.conv1(x))
 
 
+class DenseLayer(nn.Module):
+    def __init__(self, in_ch: int, growth: int = 16):
+        super().__init__()
+        self.conv = nn.Conv2d(in_ch, growth, 3, padding=1, bias=False)
+        self.act  = nn.GELU()
+
+    def forward(self, x):
+        return torch.cat([x, self.act(self.conv(x))], dim=1)
+
+
+class MiniRRDB(nn.Module):
+    """
+    Tiny 3-layer dense block before upsample.
+    Gives the network dedicated capacity for detail recovery
+    before the resolution jump — adds ~150K params at 360p.
+    """
+    def __init__(self, ch: int, growth: int = 16):
+        super().__init__()
+        self.d1   = DenseLayer(ch,           growth)
+        self.d2   = DenseLayer(ch + growth,  growth)
+        self.d3   = DenseLayer(ch + growth*2, growth)
+        self.fuse = nn.Conv2d(ch + growth*3, ch, 1, bias=False)
+
+    def forward(self, x):
+        return x + self.fuse(self.d3(self.d2(self.d1(x)))) * 0.2
+
+
+class PixelShuffleUpsample(nn.Module):
+    """
+    Pixel shuffle with ICNR initialization + refinement conv.
+    ICNR eliminates checkerboard artifacts by starting from a
+    nearest-neighbor baseline. Refinement conv cleans up shuffle artifacts.
+    """
+    def __init__(self, in_ch: int, out_ch: int, scale: int = 2):
+        super().__init__()
+        self.conv          = nn.Conv2d(in_ch, out_ch * scale * scale, 3, padding=1)
+        self.pixel_shuffle = nn.PixelShuffle(scale)
+        self.refine        = nn.Conv2d(out_ch, out_ch, 3, padding=1)
+        _icnr_init(self.conv.weight, scale)
+
+    def forward(self, x):
+        return self.refine(self.pixel_shuffle(self.conv(x)))
+
+
 class RecurrentDenoisingAutoencoderUpsampling(nn.Module):
     """
-    Receives 360p input, outputs 720p.
-    Network runs at 360p, final output is bilinearly upsampled 2x.
-    hidden states are sized to 360p (the input resolution).
-    pad to multiples of 32 at input resolution.
+    360p input → 720p output.
+    Denoises and temporally accumulates at 360p, then upsamples via:
+      - 2x MiniRRDB blocks for detail preparation
+      - ICNR pixel shuffle for checkerboard-free upsampling
+      - refinement conv to clean shuffle artifacts
+    Pad to multiples of 32. Hidden states at 360p resolution.
     """
     def __init__(self, in_channels: int = 4, out_channels: int = 3, base: int = 32):
         super().__init__()
@@ -83,8 +143,8 @@ class RecurrentDenoisingAutoencoderUpsampling(nn.Module):
         self.enc5 = EncoderStage(C[3], C[4])
 
         self.bottleneck = nn.Sequential(
-            ConvNormRelu(C[4], C[4]),
-            ConvNormRelu(C[4], C[4]),
+            ConvNormAct(C[4], C[4]),
+            ConvNormAct(C[4], C[4]),
         )
 
         self.dec5 = DecoderStage(C[4], C[4], C[3])
@@ -93,14 +153,19 @@ class RecurrentDenoisingAutoencoderUpsampling(nn.Module):
         self.dec2 = DecoderStage(C[1], C[1], C[0])
         self.dec1 = DecoderStage(C[0], C[0], C[0])
 
-        self.output_conv = nn.Conv2d(C[0], out_channels, kernel_size=1)
+        self.pre_upsample = nn.Sequential(
+            MiniRRDB(C[0]),
+            MiniRRDB(C[0]),
+        )
+        self.upsample = PixelShuffleUpsample(C[0], out_channels, scale=2)
 
         self._init_weights()
 
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
+                if m.weight is not self.upsample.conv.weight:
+                    nn.init.kaiming_normal_(m.weight, a=0.1, nonlinearity='leaky_relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
@@ -125,8 +190,8 @@ class RecurrentDenoisingAutoencoderUpsampling(nn.Module):
         x = self.dec2(x, skip2)
         x = self.dec1(x, skip1)
 
-        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
-        output = torch.sigmoid(self.output_conv(x))
+        x = self.pre_upsample(x)
+        output = (torch.tanh(self.upsample(x)) + 1) / 2
         output = output[:, :, :H*2, :W*2]
 
         return output, h1_out, h2_out, h3_out, h4_out, h5_out
