@@ -12,7 +12,7 @@ export class TemporalConfidence {
         this.historyWeight = 1.0;
         this.maxHistoryConfidence = 7.0;
         this.depthThreshold = 0.02;
-        this.reprojectionDistancePixels  = 20.0;
+        this.reprojectionDistancePixels  = 250.0;
         this.colorHistLower = 0.02;
         this.colorHistUpper = 0.4;
 

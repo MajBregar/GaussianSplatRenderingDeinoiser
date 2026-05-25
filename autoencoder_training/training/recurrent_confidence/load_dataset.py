@@ -196,4 +196,5 @@ def load_sequence_dataset(
         persistent_workers=num_workers > 0,
     )
 
+    print("Confidence based sets loaded")
     return train_loader, eval_loader

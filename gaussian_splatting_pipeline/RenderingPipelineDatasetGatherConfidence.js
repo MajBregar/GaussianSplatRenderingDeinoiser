@@ -72,11 +72,7 @@ export class RenderingPipelineDatasetGatherConfidence {
 
         window.addEventListener('keydown', event => {
             if (event.key.toLowerCase() === 's')
-                this.saveRequested = true;
-        });
-        window.addEventListener('keyup', event => {
-            if (event.key.toLowerCase() === 's')
-                this.saveRequested = false;
+                this.saveRequested = !this.saveRequested;
         });
     }
 

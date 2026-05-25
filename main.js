@@ -196,13 +196,16 @@ if (renderingPipeline.image_sampler) {
 // gui.add(renderingPipeline.renderer, 'hiBound', 0, 1).name("Higher Bound");
 // gui.add(renderingPipeline.compositor, 'gamma', 0, 3).name("Gamma Correction");
 
-gui.add(renderingPipeline.temporal_confidence, 'historyWeight', 0, 1).name("historyWeight");
-gui.add(renderingPipeline.temporal_confidence, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
-gui.add(renderingPipeline.temporal_confidence, 'depthThreshold', 0, 1).name("depthThreshold");
-gui.add(renderingPipeline.temporal_confidence, 'reprojectionDistancePixels', 0, 50).name("reprojectionDistancePixels");
+if (renderingPipeline.temporal_confidence) {
+    gui.add(renderingPipeline.temporal_confidence, 'historyWeight', 0, 1).name("historyWeight");
+    gui.add(renderingPipeline.temporal_confidence, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
+    gui.add(renderingPipeline.temporal_confidence, 'depthThreshold', 0, 1).name("depthThreshold");
+    gui.add(renderingPipeline.temporal_confidence, 'reprojectionDistancePixels', 0, 250).name("reprojectionDistancePixels");
 
-gui.add(renderingPipeline.temporal_confidence, 'colorHistLower', 0, 1).name("colorHistLower");
-gui.add(renderingPipeline.temporal_confidence, 'colorHistUpper', 0, 1).name("colorHistUpper");
+    gui.add(renderingPipeline.temporal_confidence, 'colorHistLower', 0, 1).name("colorHistLower");
+    gui.add(renderingPipeline.temporal_confidence, 'colorHistUpper', 0, 1).name("colorHistUpper");
+}
+
 
 // render loop wrappers
 function update(t, dt) {

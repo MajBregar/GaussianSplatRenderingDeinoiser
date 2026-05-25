@@ -19,3 +19,5 @@ npm run dev
     - pass in sequences of frames to build recurrent hidden states
 
 - potentially try charbonnier_loss
+
+- having zoomed out camera too far seems to have negative effect, maybe because scene is dominated by mostly white
