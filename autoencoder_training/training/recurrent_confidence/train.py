@@ -14,9 +14,9 @@ from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_c
 from load_dataset import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 120
+TRAINING_EPOCHS = 130
 SEQ_LEN         = 7
-PATCH_SIZE      = 128
+PATCH_SIZE      = 256
 BATCH_SIZE      = 1
 LR              = 1e-3
 LR_MIN          = 5e-6
@@ -242,8 +242,8 @@ if __name__ == "__main__":
 
     print("Loading datasets...")
     train_loader, eval_loader = load_sequence_dataset(
-        train_folder="../../dataset_recurrent_confidence_short/train",
-        eval_folder="../../dataset_recurrent_confidence_short/eval",
+        train_folder="../../dataset_recurrent_confidence/train",
+        eval_folder="../../dataset_recurrent_confidence/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
         target_size=(720, 1280),

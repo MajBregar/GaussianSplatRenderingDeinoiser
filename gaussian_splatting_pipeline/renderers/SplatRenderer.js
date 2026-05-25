@@ -8,8 +8,8 @@ import {
 } from 'engine/core/SceneUtils.js';
 
 import { createVertexBuffer } from 'engine/core/VertexUtils.js';
-import { Splat } from './file_handling/Splat.js';
-import { SplatSorter } from './SplatSorter.js';
+import { Splat } from 'file_handling/Splat.js';
+import { SplatSorter } from 'renderers/SplatSorter.js';
 
 export class SplatRenderer {
     constructor(device, code, format = 'rgba8unorm', sorted = false) {

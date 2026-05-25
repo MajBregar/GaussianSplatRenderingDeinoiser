@@ -8,17 +8,17 @@ import { TouchController } from 'engine/controllers/TouchController.js';
 import { OrbitController } from 'engine/controllers/OrbitController.js';
 import { AutomaticController } from 'engine/controllers/AutomaticController.js';
 
-import { parseSplats } from './gaussian_splatting_pipeline/file_handling/parseSplats.js';
-import { Splat } from './gaussian_splatting_pipeline/file_handling/Splat.js';
-import { SplatLoader } from './gaussian_splatting_pipeline/file_handling/SplatLoader.js';
+import { parseSplats } from 'file_handling/parseSplats.js';
+import { Splat } from 'file_handling/Splat.js';
+import { SplatLoader } from 'file_handling/SplatLoader.js';
 
-import { RenderingPipelineDatasetGather } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGather.js';
-import { RenderingPipelineDatasetGatherDownsample } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGatherDownsample.js';
-import { RenderingPipelineDatasetGatherConfidence } from './gaussian_splatting_pipeline/RenderingPipelineDatasetGatherConfidence.js';
+import { RenderingPipelineDatasetGather } from 'pipelines/RenderingPipelineDatasetGather.js';
+import { RenderingPipelineDatasetGatherDownsample } from 'pipelines/RenderingPipelineDatasetGatherDownsample.js';
+import { RenderingPipelineDatasetGatherConfidence } from 'pipelines/RenderingPipelineDatasetGatherConfidence.js';
 
-import { RenderingPipelineModelInferrence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrence.js';
-import { RenderingPipelineModelInferrenceUpscaling } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrenceUpscaling.js';
-import { RenderingPipelineModelInferrenceConfidence } from './gaussian_splatting_pipeline/RenderingPipelineModelInferrenceConfidence.js';
+import { RenderingPipelineModelInferrence } from 'pipelines/RenderingPipelineModelInferrence.js';
+import { RenderingPipelineModelInferrenceUpscaling } from 'pipelines/RenderingPipelineModelInferrenceUpscaling.js';
+import { RenderingPipelineModelInferrenceConfidence } from 'pipelines/RenderingPipelineModelInferrenceConfidence.js';
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
@@ -85,7 +85,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrenceConfidence({
+const renderingPipeline = new RenderingPipelineDatasetGatherConfidence({
     device,
     context,
     format,

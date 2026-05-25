@@ -1,5 +1,4 @@
-const code = await fetch(new URL('./shaders/spatial_denoising.wgsl', import.meta.url))
-    .then(response => response.text());
+import code from 'shaders/spatial_denoising.wgsl?raw';
 
 export class SpatialDenoiser {
     constructor(device, format = 'rgba16float') {

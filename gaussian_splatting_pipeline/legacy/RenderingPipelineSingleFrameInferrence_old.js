@@ -9,13 +9,8 @@ import { ImageSampler } from './ImageSampler.js';
 import { DepthCompositor } from './DepthCompositor.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
-const stochastic_splatting_code = await fetch(
-    new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)
-).then(r => r.text());
-
-const sorted_splatting_code = await fetch(
-    new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)
-).then(r => r.text());
+import stochastic_splatting_code from 'shaders/stochastic_splat_render.wgsl?raw';
+import sorted_splatting_code from 'shaders/sorted_splat_render.wgsl?raw';
 
 export class RenderingPipelineSingleFrameInferrence {
     constructor({

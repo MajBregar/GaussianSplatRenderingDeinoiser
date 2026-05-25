@@ -1,29 +1,33 @@
-const code = await fetch(
-    new URL('./shaders/tensor_to_texture.wgsl', import.meta.url)
-).then(response => response.text());
+import code from 'shaders/texture_to_tensor_confidence.wgsl?raw';
 
-export class TensorToTextureConverter {
-    constructor(device, outputFormat = 'rgba8unorm') {
+export class TextureToTensorConfidence {
+    constructor(device) {
         this.device = device;
-        this.outputFormat = outputFormat;
 
         this.layout = this.device.createBindGroupLayout({
             entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: 'read-only-storage' },
+                    texture: { sampleType: 'float' },
                 },
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
-                    storageTexture: {
-                        access: 'write-only',
-                        format: this.outputFormat,
-                    },
+                    texture: { sampleType: 'depth' },
                 },
                 {
                     binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: 'float' },
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: 'storage' },
+                },
+                {
+                    binding: 4,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: 'uniform' },
                 },
@@ -48,37 +52,21 @@ export class TensorToTextureConverter {
         });
     }
 
-    render(inputTensorBuffer, outputTexture, width, height) {
+    render(colorTexture, depthTexture, confidenceTexture, outputTensorBuffer, width, height) {
         this.device.queue.writeBuffer(
             this.uniformBuffer,
             0,
-            new Uint32Array([
-                width,
-                height,
-                0,
-                0,
-            ])
+            new Uint32Array([width, height, 0, 0])
         );
 
         const bindGroup = this.device.createBindGroup({
             layout: this.layout,
             entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: inputTensorBuffer,
-                    },
-                },
-                {
-                    binding: 1,
-                    resource: outputTexture.createView(),
-                },
-                {
-                    binding: 2,
-                    resource: {
-                        buffer: this.uniformBuffer,
-                    },
-                },
+                { binding: 0, resource: colorTexture.createView() },
+                { binding: 1, resource: depthTexture.createView() },
+                { binding: 2, resource: confidenceTexture.createView() },
+                { binding: 3, resource: { buffer: outputTensorBuffer } },
+                { binding: 4, resource: { buffer: this.uniformBuffer } },
             ],
         });
 
@@ -94,7 +82,6 @@ export class TensorToTextureConverter {
         );
 
         pass.end();
-
         this.device.queue.submit([commandEncoder.finish()]);
     }
 }

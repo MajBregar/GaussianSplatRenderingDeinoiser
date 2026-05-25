@@ -1,30 +1,27 @@
-const code = await fetch(
-    new URL('./shaders/texture_to_tensor.wgsl', import.meta.url)
-).then(response => response.text());
+import code from 'shaders/tensor_to_texture.wgsl?raw';
 
-export class TextureToTensorConverter {
-    constructor(device) {
+export class TensorToTextureConverter {
+    constructor(device, outputFormat = 'rgba8unorm') {
         this.device = device;
+        this.outputFormat = outputFormat;
 
         this.layout = this.device.createBindGroupLayout({
             entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
-                    texture: { sampleType: 'float' },
+                    buffer: { type: 'read-only-storage' },
                 },
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
-                    texture: { sampleType: 'depth' },
+                    storageTexture: {
+                        access: 'write-only',
+                        format: this.outputFormat,
+                    },
                 },
                 {
                     binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: 'storage' },
-                },
-                {
-                    binding: 3,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: 'uniform' },
                 },
@@ -49,7 +46,7 @@ export class TextureToTensorConverter {
         });
     }
 
-    render(colorTexture, depthTexture, outputTensorBuffer, width, height) {
+    render(inputTensorBuffer, outputTexture, width, height) {
         this.device.queue.writeBuffer(
             this.uniformBuffer,
             0,
@@ -66,20 +63,16 @@ export class TextureToTensorConverter {
             entries: [
                 {
                     binding: 0,
-                    resource: colorTexture.createView(),
-                },
-                {
-                    binding: 1,
-                    resource: depthTexture.createView(),
-                },
-                {
-                    binding: 2,
                     resource: {
-                        buffer: outputTensorBuffer,
+                        buffer: inputTensorBuffer,
                     },
                 },
                 {
-                    binding: 3,
+                    binding: 1,
+                    resource: outputTexture.createView(),
+                },
+                {
+                    binding: 2,
                     resource: {
                         buffer: this.uniformBuffer,
                     },

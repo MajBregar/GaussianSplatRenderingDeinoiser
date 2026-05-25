@@ -1,22 +1,18 @@
 import { mat4 } from 'glm';
 import { Camera } from 'engine/core.js';
-import { SplatRenderer } from './SplatRenderer.js';
-import { Compositor } from './Compositor.js';
+import { SplatRenderer } from 'renderers/SplatRenderer.js';
+import { Compositor } from 'renderers/Compositor.js';
 import { getGlobalViewMatrix, getProjectionMatrix } from 'engine/core/SceneUtils.js';
 
-import { TextureToTensorConverter } from './TextureToTensorConverter.js';
-import { TensorToTextureConverter } from './TensorToTextureConverter.js';
-import { ImageSampler } from './ImageSampler.js';
-import { DepthCompositor } from './DepthCompositor.js';
+import { TextureToTensorConverter } from 'renderers/TextureToTensorConverter.js';
+import { TensorToTextureConverter } from 'renderers/TensorToTextureConverter.js';
+import { DepthCompositor } from 'renderers/DepthCompositor.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
-const stochastic_splatting_code = await fetch(
-    new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)
-).then(r => r.text());
+import { ImageSampler } from '../ImageSampler.js';
 
-const sorted_splatting_code = await fetch(
-    new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)
-).then(r => r.text());
+import stochastic_splatting_code from 'shaders/stochastic_splat_render.wgsl?raw';
+import sorted_splatting_code from 'shaders/sorted_splat_render.wgsl?raw';
 
 export class RenderingPipelineDatasetGather {
     constructor({

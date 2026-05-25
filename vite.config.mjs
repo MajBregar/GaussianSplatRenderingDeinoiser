@@ -14,6 +14,22 @@ export default defineConfig({
                 replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/engine/$1'),
             },
             {
+                find: /^pipelines\/(.*)$/,
+                replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/pipelines/$1'),
+            },
+            {
+                find: /^renderers\/(.*)$/,
+                replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/renderers/$1'),
+            },
+            {
+                find: /^shaders\/(.*)$/,
+                replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/shaders/$1'),
+            },
+            {
+                find: /^file_handling\/(.*)$/,
+                replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/file_handling/$1'),
+            },
+            {
                 find: /^glm$/,
                 replacement: path.resolve(__dirname, 'gaussian_splatting_pipeline/lib/glm.js'),
             },

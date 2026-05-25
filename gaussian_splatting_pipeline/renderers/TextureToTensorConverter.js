@@ -1,8 +1,8 @@
 const code = await fetch(
-    new URL('./shaders/texture_to_tensor_confidence.wgsl', import.meta.url)
+    new URL('shaders/texture_to_tensor.wgsl', import.meta.url)
 ).then(response => response.text());
 
-export class TextureToTensorConfidence {
+export class TextureToTensorConverter {
     constructor(device) {
         this.device = device;
 
@@ -21,15 +21,10 @@ export class TextureToTensorConfidence {
                 {
                     binding: 2,
                     visibility: GPUShaderStage.COMPUTE,
-                    texture: { sampleType: 'float' },
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: 'storage' },
                 },
                 {
-                    binding: 4,
+                    binding: 3,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: { type: 'uniform' },
                 },
@@ -54,21 +49,41 @@ export class TextureToTensorConfidence {
         });
     }
 
-    render(colorTexture, depthTexture, confidenceTexture, outputTensorBuffer, width, height) {
+    render(colorTexture, depthTexture, outputTensorBuffer, width, height) {
         this.device.queue.writeBuffer(
             this.uniformBuffer,
             0,
-            new Uint32Array([width, height, 0, 0])
+            new Uint32Array([
+                width,
+                height,
+                0,
+                0,
+            ])
         );
 
         const bindGroup = this.device.createBindGroup({
             layout: this.layout,
             entries: [
-                { binding: 0, resource: colorTexture.createView() },
-                { binding: 1, resource: depthTexture.createView() },
-                { binding: 2, resource: confidenceTexture.createView() },
-                { binding: 3, resource: { buffer: outputTensorBuffer } },
-                { binding: 4, resource: { buffer: this.uniformBuffer } },
+                {
+                    binding: 0,
+                    resource: colorTexture.createView(),
+                },
+                {
+                    binding: 1,
+                    resource: depthTexture.createView(),
+                },
+                {
+                    binding: 2,
+                    resource: {
+                        buffer: outputTensorBuffer,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: this.uniformBuffer,
+                    },
+                },
             ],
         });
 
@@ -84,6 +99,7 @@ export class TextureToTensorConfidence {
         );
 
         pass.end();
+
         this.device.queue.submit([commandEncoder.finish()]);
     }
 }

@@ -13,11 +13,10 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { ImageSampler } from './ImageSampler.js';
 import { DepthCompositor } from './DepthCompositor.js';
 
-const stochastic_splatting_code = await fetch(new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)).then(response => response.text());
-const sorted_splatting_code = await fetch(new URL('./shaders/sorted_splat_render.wgsl', import.meta.url)).then(response => response.text());
-
-const temporal_denoiser_code = await fetch(new URL('./shaders/temporal_denoising.wgsl', import.meta.url)).then(response => response.text());
-const edge_temporal_denoiser_code = await fetch(new URL('./shaders/temporal_edge_denoising.wgsl', import.meta.url)).then(response => response.text());
+import stochastic_splatting_code from 'shaders/stochastic_splat_render.wgsl?raw';
+import sorted_splatting_code from 'shaders/sorted_splat_render.wgsl?raw';
+import temporal_denoiser_code from 'shaders/temporal_denoising.wgsl?raw';
+import edge_temporal_denoiser_code from 'shaders/temporal_edge_denoising.wgsl?raw';
 
 export class RenderingPipeline {
     constructor({

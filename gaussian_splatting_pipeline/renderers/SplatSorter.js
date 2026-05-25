@@ -1,18 +1,7 @@
-const depthShaderCode = await fetch(
-    new URL('./shaders/splat_depth.wgsl', import.meta.url)
-).then(r => r.text());
-
-const bitonicGlobalShaderCode = await fetch(
-    new URL('./shaders/splat_bitonic_global.wgsl', import.meta.url)
-).then(r => r.text());
-
-const bitonicLocalShaderCode = await fetch(
-    new URL('./shaders/splat_bitonic_local.wgsl', import.meta.url)
-).then(r => r.text());
-
-const gatherShaderCode = await fetch(
-    new URL('./shaders/splat_gather.wgsl', import.meta.url)
-).then(r => r.text());
+import depthShaderCode from 'shaders/splat_depth.wgsl?raw';
+import bitonicGlobalShaderCode from 'shaders/splat_bitonic_global.wgsl?raw';
+import bitonicLocalShaderCode from 'shaders/splat_bitonic_local.wgsl?raw';
+import gatherShaderCode from 'shaders/splat_gather.wgsl?raw';
 
 function nextPow2(n) {
     let p = 1;

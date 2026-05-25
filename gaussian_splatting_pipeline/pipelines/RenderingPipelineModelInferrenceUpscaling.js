@@ -1,17 +1,15 @@
 import { Camera } from 'engine/core.js';
-import { SplatRenderer } from './SplatRenderer.js';
-import { Compositor } from './Compositor.js';
+import { SplatRenderer } from 'renderers/SplatRenderer.js';
+import { Compositor } from 'renderers/Compositor.js';
 
-import { PerformanceTracker } from './PerformanceTracker.js';
-
-import { OnnxModelInitializer } from './OnnxModelInitializer.js';
-import { TextureToTensorConverter } from './TextureToTensorConverter.js';
-import { TensorToTextureConverter } from './TensorToTextureConverter.js';
+import { TextureToTensorConverter } from 'renderers/TextureToTensorConverter.js';
+import { TensorToTextureConverter } from 'renderers/TensorToTextureConverter.js';
 import * as ort from 'onnxruntime-web/webgpu';
 
-const stochastic_splatting_code = await fetch(
-    new URL('./shaders/stochastic_splat_render.wgsl', import.meta.url)
-).then(response => response.text());
+import { PerformanceTracker } from '../PerformanceTracker.js';
+import { OnnxModelInitializer } from '../OnnxModelInitializer.js';
+
+import stochastic_splatting_code from 'shaders/stochastic_splat_render.wgsl?raw';
 
 export class RenderingPipelineModelInferrenceUpscaling {
     constructor({
