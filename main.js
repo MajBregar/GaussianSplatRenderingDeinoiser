@@ -15,17 +15,20 @@ import { SplatLoader } from 'file_handling/SplatLoader.js';
 import { RenderingPipelineDatasetGather } from 'pipelines/RenderingPipelineDatasetGather.js';
 import { RenderingPipelineDatasetGatherDownsample } from 'pipelines/RenderingPipelineDatasetGatherDownsample.js';
 import { RenderingPipelineDatasetGatherConfidence } from 'pipelines/RenderingPipelineDatasetGatherConfidence.js';
+import { RenderingPipelineDatasetGatherMotionMap } from 'pipelines/RenderingPipelineDatasetGatherMotionMap.js';
+
 
 import { RenderingPipelineModelInferrence } from 'pipelines/RenderingPipelineModelInferrence.js';
 import { RenderingPipelineModelInferrenceUpscaling } from 'pipelines/RenderingPipelineModelInferrenceUpscaling.js';
 import { RenderingPipelineModelInferrenceConfidence } from 'pipelines/RenderingPipelineModelInferrenceConfidence.js';
+import { RenderingPipelineModelInferrenceMotion } from 'pipelines/RenderingPipelineModelInferrenceMotion.js';
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderConfidence.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderMotion.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -85,7 +88,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineDatasetGatherConfidence({
+const renderingPipeline = new RenderingPipelineModelInferrenceMotion({
     device,
     context,
     format,
