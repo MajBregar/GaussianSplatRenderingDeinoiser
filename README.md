@@ -21,3 +21,17 @@ npm run dev
 - potentially try charbonnier_loss
 
 - having zoomed out camera too far seems to have negative effect, maybe because scene is dominated by mostly white
+
+# try before report
+- way higher max history confidence - not good
+- train single item scenes on short dataset up close - otherwise white splotches show up
+- train final model on multiscene dataset
+
+- make oke lightweight model
+
+
+
+
+
+# TODO
+- clean up old models which i will not use (make new )

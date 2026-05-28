@@ -120,12 +120,14 @@ export class RenderingPipelineDatasetGatherConfidence {
 
         this.#swapTemporalHistoryBuffers();
 
-        let noiseColor, noiseDepth, noiseConfidence;
+        let noiseColor, noiseDepth, noiseConfidence, historyColor, historyDepth;
         if (this.saveRequested) {
             await this.device.queue.onSubmittedWorkDone();
             noiseColor      = await this.image_sampler.readTexturePixels(this.directColorTexture_A);
             noiseDepth      = await this.image_sampler.readTexturePixels(this.depthExportTexture);
             noiseConfidence = await this.image_sampler.readTexturePixels(this.confidenceExportTexture);
+            historyColor = await this.image_sampler.readTexturePixels(nextHistoryColor);
+            historyDepth = await this.image_sampler.readTexturePixels(nextHistoryDepth);
         }
 
         this.ground_truth_renderer.render(
@@ -148,14 +150,18 @@ export class RenderingPipelineDatasetGatherConfidence {
             const gtDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
 
             this.image_sampler.queueSave(noiseColor, noiseDepth, 'noise', false);
+            this.image_sampler.queueSave(historyColor, historyDepth, 'history', false);
             this.image_sampler.queueSaveSingle(noiseConfidence, 'confidence', false);
-            this.image_sampler.queueSave(gtColor, gtDepth, 'gt', true);
+            this.image_sampler.queueSaveSingle(gtColor, 'gt_color', true);
+
             await this.image_sampler._saveChain;
         }
 
+        const currentHistoryColorOutput = this.#getCurrentHistoryColorTexture();
+
         this.compositor.render(
             { color: this.context.getCurrentTexture() },
-            this.confidenceExportTexture,
+            currentHistoryColorOutput,
             1.0
         );
 
@@ -273,7 +279,7 @@ export class RenderingPipelineDatasetGatherConfidence {
         return this.device.createTexture({
             size  : [this.canvas.width, this.canvas.height],
             format: 'rgba8unorm',
-            usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
         });
     }
 
@@ -281,7 +287,7 @@ export class RenderingPipelineDatasetGatherConfidence {
         return this.device.createTexture({
             size  : [this.canvas.width, this.canvas.height],
             format: 'r32float',
-            usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
         });
     }
 

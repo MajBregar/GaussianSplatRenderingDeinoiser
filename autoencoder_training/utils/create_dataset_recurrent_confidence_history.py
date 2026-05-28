@@ -18,41 +18,51 @@ def depth_rgb_to_f32(path: str | Path) -> np.ndarray:
     return depth.astype(np.float32)
 
 
-def motion_rgb_to_f32(path: str | Path) -> np.ndarray:
+def confidence_rgb_to_f32(path: str | Path) -> np.ndarray:
     img = Image.open(path).convert("RGB")
     rgb = np.asarray(img, dtype=np.float32)
-    # RG channels packed into [0,1], recover signed NDC delta [-1,1]
-    motion = (rgb[..., :2] / 255.0) * 2.0 - 1.0
-    return motion.astype(np.float32)
+    return (rgb[..., 0] / 255.0).astype(np.float32)
 
 
 def save_depth_npy(input_png: str | Path, output_npy: str | Path) -> None:
     np.save(output_npy, depth_rgb_to_f32(input_png))
 
 
-def save_motion_npy(input_png: str | Path, output_npy: str | Path) -> None:
-    np.save(output_npy, motion_rgb_to_f32(input_png))
+def save_confidence_npy(input_png: str | Path, output_npy: str | Path) -> None:
+    np.save(output_npy, confidence_rgb_to_f32(input_png))
 
 
 def _parse_filename(path: Path) -> dict | None:
-    match = re.match(r"(.+?)_(noise|gt)_(color|depth)_(\d+)\.png$", path.name)
+    # matches: <model>_noise_color_<id>.png, <model>_noise_depth_<id>.png
+    #          <model>_history_color_<id>.png, <model>_history_depth_<id>.png
+    match = re.match(r"(.+?)_(noise|history)_(color|depth)_(\d+)\.png$", path.name)
     if match:
         model_name, image_name, kind, sample_id = match.groups()
         return {
             "model_name": model_name,
-            "image_name": image_name,
             "kind":       f"{image_name}_{kind}",
             "sample_id":  sample_id,
             "path":       path,
         }
 
-    match = re.match(r"(.+?)_motion_(\d+)\.png$", path.name)
+    # matches: <model>_gt_color_<id>.png
+    match = re.match(r"(.+?)_gt_color_(\d+)\.png$", path.name)
     if match:
         model_name, sample_id = match.groups()
         return {
             "model_name": model_name,
-            "image_name": "motion",
-            "kind":       "motion",
+            "kind":       "gt_color",
+            "sample_id":  sample_id,
+            "path":       path,
+        }
+
+    # matches: <model>_confidence_<id>.png
+    match = re.match(r"(.+?)_confidence_(\d+)\.png$", path.name)
+    if match:
+        model_name, sample_id = match.groups()
+        return {
+            "model_name": model_name,
+            "kind":       "confidence",
             "sample_id":  sample_id,
             "path":       path,
         }
@@ -70,12 +80,13 @@ def _is_image_valid(path: Path) -> bool:
 
 
 def generate_sequence_dataset(
-    image_folder:  str | Path,
-    output_folder: str | Path,
-    seq_stride:    int  = 50,
-    eval_every:    int  = 5,
-    min_seq_len:   int  = 7,
-    require_motion: bool = True,
+    image_folder:       str | Path,
+    output_folder:      str | Path,
+    seq_stride:         int  = 50,
+    eval_every:         int  = 5,
+    min_seq_len:        int  = 7,
+    require_confidence: bool = True,
+    require_history:    bool = True,
 ) -> None:
     image_folder  = Path(image_folder)
     output_folder = Path(output_folder)
@@ -89,17 +100,18 @@ def generate_sequence_dataset(
         parsed = _parse_filename(path)
         if parsed is None:
             continue
-
         sid = parsed["sample_id"]
         key = parsed["kind"]
-
         if sid not in samples:
             samples[sid] = {}
         samples[sid][key] = path
 
     required = {"noise_color", "noise_depth", "gt_color"}
-    if require_motion:
-        required.add("motion")
+    if require_confidence:
+        required.add("confidence")
+    if require_history:
+        required.add("history_color")
+        required.add("history_depth")
 
     valid: list[tuple[int, dict]] = []
     corrupted_count = 0
@@ -173,8 +185,11 @@ def generate_sequence_dataset(
         (seq_dir / "input").mkdir(parents=True, exist_ok=True)
         (seq_dir / "depth").mkdir(parents=True, exist_ok=True)
         (seq_dir / "target").mkdir(parents=True, exist_ok=True)
-        if require_motion:
-            (seq_dir / "motion").mkdir(parents=True, exist_ok=True)
+        if require_confidence:
+            (seq_dir / "confidence").mkdir(parents=True, exist_ok=True)
+        if require_history:
+            (seq_dir / "history_color").mkdir(parents=True, exist_ok=True)
+            (seq_dir / "history_depth").mkdir(parents=True, exist_ok=True)
 
         for frame_idx, (sid, files) in enumerate(chunk):
             frame_name = f"{frame_idx:04d}"
@@ -183,8 +198,14 @@ def generate_sequence_dataset(
             shutil.copy2(files["gt_color"],    seq_dir / "target" / f"{frame_name}.png")
             save_depth_npy(files["noise_depth"], seq_dir / "depth" / f"{frame_name}.npy")
 
-            if require_motion and "motion" in files:
-                save_motion_npy(files["motion"], seq_dir / "motion" / f"{frame_name}.npy")
+            if require_confidence and "confidence" in files:
+                save_confidence_npy(files["confidence"], seq_dir / "confidence" / f"{frame_name}.npy")
+
+            if require_history:
+                if "history_color" in files:
+                    shutil.copy2(files["history_color"], seq_dir / "history_color" / f"{frame_name}.png")
+                if "history_depth" in files:
+                    save_depth_npy(files["history_depth"], seq_dir / "history_depth" / f"{frame_name}.npy")
 
         if is_eval:
             eval_count += len(chunk)
@@ -200,20 +221,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Convert captured frames into sequence folders for recurrent denoiser training."
     )
-    parser.add_argument("--images",      type=Path, required=True)
-    parser.add_argument("--out",         type=Path, default=Path("dataset_recurrent_orbit_cam"))
-    parser.add_argument("--seq_stride",  type=int,  default=30)
-    parser.add_argument("--eval_every",  type=int,  default=5)
-    parser.add_argument("--min_seq_len", type=int,  default=10)
-    parser.add_argument("--no_motion",   action="store_true", help="Skip motion map loading even if present")
+    parser.add_argument("--images",        type=Path, required=True)
+    parser.add_argument("--out",           type=Path, default=Path("dataset_recurrent_orbit_cam"))
+    parser.add_argument("--seq_stride",    type=int,  default=30)
+    parser.add_argument("--eval_every",    type=int,  default=5)
+    parser.add_argument("--min_seq_len",   type=int,  default=10)
+    parser.add_argument("--no_confidence", action="store_true")
+    parser.add_argument("--no_history",    action="store_true")
 
     args = parser.parse_args()
 
     generate_sequence_dataset(
-        image_folder   = args.images,
-        output_folder  = args.out,
-        seq_stride     = args.seq_stride,
-        eval_every     = args.eval_every,
-        min_seq_len    = args.min_seq_len,
-        require_motion = not args.no_motion,
+        image_folder       = args.images,
+        output_folder      = args.out,
+        seq_stride         = args.seq_stride,
+        eval_every         = args.eval_every,
+        min_seq_len        = args.min_seq_len,
+        require_confidence = not args.no_confidence,
+        require_history    = not args.no_history,
     )

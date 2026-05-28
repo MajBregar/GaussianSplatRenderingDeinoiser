@@ -4,7 +4,7 @@ autoencoder_training/*.npy
 autoencoder_training/*.pt
 autoencoder_training/*.pth
 autoencoder_training/*.ckpt
-**dataset_recurrent*
+*/dataset_*
 **/model_output*
 
 public/splats/debug_horizontal.splat
@@ -13,6 +13,9 @@ public/splats/debug.splat
 public/splats/train.splat
 public/models/
 splats_local
+
+public/splats/garden.splat
+public/splats/backyard.splat
 
 tmp/*
 .venv

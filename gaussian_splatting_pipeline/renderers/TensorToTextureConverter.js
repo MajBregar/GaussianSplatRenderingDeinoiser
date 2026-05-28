@@ -1,9 +1,12 @@
-import code from 'shaders/tensor_to_texture.wgsl?raw';
+import code_fp32 from 'shaders/tensor_to_texture.wgsl?raw';
+import code_fp16 from 'shaders/tensor_to_texture_fp16.wgsl?raw';
 
 export class TensorToTextureConverter {
-    constructor(device, outputFormat = 'rgba8unorm') {
+    constructor(device, outputFormat = 'rgba8unorm', fp16 = false) {
         this.device = device;
         this.outputFormat = outputFormat;
+
+        const code = fp16 ? code_fp16 : code_fp32;
 
         this.layout = this.device.createBindGroupLayout({
             entries: [

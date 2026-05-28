@@ -14,22 +14,23 @@ from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_c
 from load_dataset import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 130
+TRAINING_EPOCHS = 80
 SEQ_LEN         = 7
-PATCH_SIZE      = 256
+PATCH_SIZE      = 128
 BATCH_SIZE      = 1
 LR              = 1e-3
 LR_MIN          = 5e-6
 
-IN_CHANNELS  = 6
+IN_CHANNELS  = 9
 OUT_CHANNELS = 3
 BASE         = 32
 
 W_SPATIAL  = 0.75
-W_GRADIENT = 0.1
-W_TEMPORAL = 0.15
+W_GRADIENT = 0.15
+W_TEMPORAL = 0.10
 
-MODEL_OUTPUT_DIR = Path("model_output_recurrent")
+DATASET_PATH = '../../dataset_test_history'
+MODEL_OUTPUT_DIR = Path("model_output_recurrent_history")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_PATH = MODEL_OUTPUT_DIR / "training_log.json"
@@ -177,9 +178,10 @@ def evaluate(model, loader, frame_weights, device) -> float:
     total = 0.0
     frame_weights = frame_weights.to(device)
 
-    for xs, ys, ms in tqdm(loader, desc="  Eval", leave=False):
+    for xs, ys, cs in tqdm(loader, desc="  Eval", leave=False):
         xs = xs.to(device, non_blocking=True)
         ys = ys.to(device, non_blocking=True)
+        cs = cs.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
         h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
@@ -202,9 +204,10 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
 
     progress = tqdm(loader, desc=f"Epoch {epoch + 1}/{TRAINING_EPOCHS}", unit="batch")
 
-    for xs, ys, ms in progress:
+    for xs, ys, cs in progress:
         xs = xs.to(device, non_blocking=True)
         ys = ys.to(device, non_blocking=True)
+        cs = cs.to(device, non_blocking=True)
 
         B, T, _, pH, pW = xs.shape
         h1, h2, h3, h4, h5 = zero_hidden(B, BASE, pH, pW, device)
@@ -212,6 +215,7 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
         preds, targets = [], []
         for t in range(T):
             pred, h1, h2, h3, h4, h5 = model(xs[:, t], h1, h2, h3, h4, h5)
+            
             h1, h2, h3, h4, h5 = (
                 h1.detach(), h2.detach(), h3.detach(), h4.detach(), h5.detach()
             )
@@ -240,14 +244,14 @@ if __name__ == "__main__":
 
     print("Loading datasets...")
     train_loader, eval_loader = load_sequence_dataset(
-        train_folder="../../dataset_recurrent_motion/train",
-        eval_folder="../../dataset_recurrent_motion/eval",
+        train_folder=f"{DATASET_PATH}/train",
+        eval_folder=f"{DATASET_PATH}/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
         target_size=(720, 1280),
         patch_size=PATCH_SIZE,
         num_workers=4,
-        use_motion=True,
+        use_history=True,
     )
 
     model = RecurrentDenoisingAutoencoder(

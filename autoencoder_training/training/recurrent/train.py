@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
-from utils.dataset_loading import load_sequence_dataset
+from load_dataset import load_sequence_dataset
 
 
 TRAINING_EPOCHS = 153

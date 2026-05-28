@@ -13,22 +13,19 @@ import { Splat } from 'file_handling/Splat.js';
 import { SplatLoader } from 'file_handling/SplatLoader.js';
 
 import { RenderingPipelineDatasetGather } from 'pipelines/RenderingPipelineDatasetGather.js';
-import { RenderingPipelineDatasetGatherDownsample } from 'pipelines/RenderingPipelineDatasetGatherDownsample.js';
 import { RenderingPipelineDatasetGatherConfidence } from 'pipelines/RenderingPipelineDatasetGatherConfidence.js';
-import { RenderingPipelineDatasetGatherMotionMap } from 'pipelines/RenderingPipelineDatasetGatherMotionMap.js';
-
 
 import { RenderingPipelineModelInferrence } from 'pipelines/RenderingPipelineModelInferrence.js';
-import { RenderingPipelineModelInferrenceUpscaling } from 'pipelines/RenderingPipelineModelInferrenceUpscaling.js';
 import { RenderingPipelineModelInferrenceConfidence } from 'pipelines/RenderingPipelineModelInferrenceConfidence.js';
-import { RenderingPipelineModelInferrenceMotion } from 'pipelines/RenderingPipelineModelInferrenceMotion.js';
+import { RenderingPipelineModelInferrenceConfidenceFP16} from 'pipelines/RenderingPipelineModelInferrenceConfidenceFP16.js';
+
 
 import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelInitializer.js';
 
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderMotion.onnx';
+const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -70,10 +67,11 @@ const LONG_FREEZE_DURATION_FRAMES = 20;
 
 const camera_controller = new TouchController(camera, canvas);
 // const camera_controller = new AutomaticController(camera, canvas, {
-//     rotationRate: [0.0005, 0.0005, 0.0001],
+//     rotationRate: [0.0000, 0.0005, 0.0001],
 //     angles: [20, 0, 180],
 //     distance: 1,
-//     distanceRate: 0.00008
+//     distanceRate: 0.0, //0.00008
+//     target: [-1, 0, -1]
 // })
 
 camera.addComponent(start_camera_transform);
@@ -88,7 +86,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrenceMotion({
+const renderingPipeline = new RenderingPipelineModelInferrence({
     device,
     context,
     format,
@@ -105,7 +103,7 @@ const splatLoader = new SplatLoader({
     canvas,
     splatContainer,
     renderingPipeline,
-    defaultFile: './splats/nike.splat',
+    defaultFile: './splats/garden.splat',
 });
 
 await splatLoader.initialize();

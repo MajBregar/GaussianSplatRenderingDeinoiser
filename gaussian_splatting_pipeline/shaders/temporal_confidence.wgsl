@@ -200,10 +200,14 @@ fn fragment(input: FragmentInput) -> FragmentOutput {
 
     let finalConfidence = select(newConfidence, uniforms.maxHistoryConfidence, !currentGeometry);
 
-    output.confidence        = encodeConfidence(finalConfidence);
-    output.historyColor      = currentColor;
-    output.historyDepth      = encodeDepth(currentDepth);
-    output.historyConfidence = encodeConfidence(newConfidence);
+    let blendFactor = carriedConfidence / newConfidence;
+    let blendedColor = mix(currentColor.rgb, historyColor, blendFactor);
+    let blendedDepth = mix(currentDepth, historyDepth, blendFactor);
 
+    output.historyColor      = vec4f(blendedColor, 1.0);
+    output.historyDepth      = encodeDepth(blendedDepth);
+    output.confidence        = encodeConfidence(finalConfidence);
+    output.historyConfidence = encodeConfidence(newConfidence);
+    
     return output;
 }

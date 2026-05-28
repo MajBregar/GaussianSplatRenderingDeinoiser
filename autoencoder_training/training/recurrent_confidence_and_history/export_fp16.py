@@ -5,9 +5,9 @@ import torch
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
 
 CHECKPOINT_PATH  = Path("model_output_recurrent/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoderMotion.onnx")
+ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoderConfidenceFP16.onnx")
 
-IN_CHANNELS  = 6
+IN_CHANNELS  = 5
 OUT_CHANNELS = 3
 BASE         = 32
 HEIGHT       = 720
@@ -23,6 +23,7 @@ def load_model(checkpoint_path: Path, device: str) -> RecurrentDenoisingAutoenco
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
+    model.half()
     print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', '?')}")
     print(f"  train_loss = {checkpoint.get('train_loss', '?'):.6f}")
     print(f"  eval_loss  = {checkpoint.get('eval_loss',  '?'):.6f}")
@@ -35,15 +36,15 @@ def infer_hidden_shapes(model, in_channels, height, width, device):
     pW = (width  + 31) // 32 * 32
 
     h_init = [
-        torch.zeros(1, C[0], pH,      pW,      device=device),
-        torch.zeros(1, C[1], pH >> 1, pW >> 1, device=device),
-        torch.zeros(1, C[2], pH >> 2, pW >> 2, device=device),
-        torch.zeros(1, C[3], pH >> 3, pW >> 3, device=device),
-        torch.zeros(1, C[4], pH >> 4, pW >> 4, device=device),
+        torch.zeros(1, C[0], pH,      pW,      device=device, dtype=torch.float16),
+        torch.zeros(1, C[1], pH >> 1, pW >> 1, device=device, dtype=torch.float16),
+        torch.zeros(1, C[2], pH >> 2, pW >> 2, device=device, dtype=torch.float16),
+        torch.zeros(1, C[3], pH >> 3, pW >> 3, device=device, dtype=torch.float16),
+        torch.zeros(1, C[4], pH >> 4, pW >> 4, device=device, dtype=torch.float16),
     ]
 
     with torch.no_grad():
-        x = torch.zeros(1, in_channels, height, width, device=device)
+        x = torch.zeros(1, in_channels, height, width, device=device, dtype=torch.float16)
         _, h1, h2, h3, h4, h5 = model(x, *h_init)
 
     return [h.shape for h in (h1, h2, h3, h4, h5)]
@@ -63,8 +64,8 @@ if __name__ == "__main__":
         print(f"h{i+1} shape: {tuple(s)}")
 
     dummy = (
-        torch.randn(1, IN_CHANNELS, HEIGHT, WIDTH, device=device),
-        *[torch.zeros(*s, device=device) for s in hidden_shapes],
+        torch.randn(1, IN_CHANNELS, HEIGHT, WIDTH, device=device, dtype=torch.float16),
+        *[torch.zeros(*s, device=device, dtype=torch.float16) for s in hidden_shapes],
     )
 
     with torch.no_grad():
@@ -102,7 +103,7 @@ if __name__ == "__main__":
         opset_version       = 18,
         external_data       = False,
         do_constant_folding = True,
-        dynamo              = False,   # force legacy exporter
+        dynamo              = False,
     )
 
     print(f"Exported ONNX model to: {ONNX_OUTPUT_PATH}")

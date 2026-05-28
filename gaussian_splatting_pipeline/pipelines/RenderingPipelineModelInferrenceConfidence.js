@@ -255,7 +255,7 @@ export class RenderingPipelineModelInferrenceConfidence {
         this.perf.end('screen_render');
     }
 
-    #cacheHiddenDims(width, height) {
+    #cacheHiddenDims(width, height) { //keep this i will need it later
         const pad_factor = this.pad_factor;
         const pH = Math.ceil(height / pad_factor) * pad_factor;
         const pW = Math.ceil(width  / pad_factor) * pad_factor;
@@ -273,6 +273,24 @@ export class RenderingPipelineModelInferrenceConfidence {
             this.hiddenDims[name] = [1, channels, pH / spatialScale, pW / spatialScale];
         }
     }
+
+    // #cacheHiddenDims(width, height) { //hotfix for lightweight model
+    //     const pH = Math.ceil(height / 32) * 32;
+    //     const pW = Math.ceil(width  / 32) * 32;
+    //     const allMeta = this.onnx_model.session.handler?.inputMetadata;
+
+    //     for (const name of this.hiddenInputNames) {
+    //         const match = name.match(/^h(\d+)_in$/);
+    //         if (!match) throw new Error(`Cannot infer dims for '${name}'`);
+    //         const level        = parseInt(match[1], 10);   // h3 -> 3, h4 -> 4, h5 -> 5
+    //         const spatialScale = 1 << level;               // h3 -> 8, h4 -> 16, h5 -> 32
+    //         const meta = Array.isArray(allMeta) ? allMeta.find(m => m.name === name) : null;
+    //         const channels = (meta?.shape?.[1] && typeof meta.shape[1] === 'number')
+    //             ? meta.shape[1]
+    //             : this.baseChannels * spatialScale;
+    //         this.hiddenDims[name] = [1, channels, pH / spatialScale, pW / spatialScale];
+    //     }
+    // }
 
     #resetHidden() {
         for (const { buffer } of Object.values(this.hiddenStates))

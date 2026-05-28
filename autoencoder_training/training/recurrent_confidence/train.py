@@ -14,9 +14,9 @@ from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_c
 from load_dataset import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 130
+TRAINING_EPOCHS = 80
 SEQ_LEN         = 7
-PATCH_SIZE      = 256
+PATCH_SIZE      = 128
 BATCH_SIZE      = 1
 LR              = 1e-3
 LR_MIN          = 5e-6
@@ -25,10 +25,11 @@ IN_CHANNELS  = 5
 OUT_CHANNELS = 3
 BASE         = 32
 
-W_SPATIAL  = 0.75
-W_GRADIENT = 0.1
-W_TEMPORAL = 0.15
+W_SPATIAL  = 0.80
+W_GRADIENT = 0.10
+W_TEMPORAL = 0.10
 
+DATASET_PATH = '../../dataset_seq_garden_old_confidence'
 MODEL_OUTPUT_DIR = Path("model_output_recurrent")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -236,19 +237,24 @@ def train_one_epoch(model, loader, optimizer, frame_weights, device, epoch):
     return running / max(len(loader), 1)
 
 
+
+
+
+
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
     print("Loading datasets...")
     train_loader, eval_loader = load_sequence_dataset(
-        train_folder="../../dataset_recurrent_confidence/train",
-        eval_folder="../../dataset_recurrent_confidence/eval",
+        train_folder=f"{DATASET_PATH}/train",
+        eval_folder=f"{DATASET_PATH}/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
         target_size=(720, 1280),
         patch_size=PATCH_SIZE,
-        num_workers=4,
+        num_workers=10,
     )
 
     model = RecurrentDenoisingAutoencoder(
