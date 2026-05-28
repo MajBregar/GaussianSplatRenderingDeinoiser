@@ -5,13 +5,10 @@ import torch.nn as nn
 class SepConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, groups=8):
         super().__init__()
-
         norm_groups = min(groups, out_channels)
 
         self.net = nn.Sequential(
-            # depthwise
             nn.Conv2d(in_channels, in_channels, 3, padding=1, groups=in_channels),
-            # pointwise
             nn.Conv2d(in_channels, out_channels, 1),
             nn.GroupNorm(norm_groups, out_channels),
             nn.SiLU(inplace=True),

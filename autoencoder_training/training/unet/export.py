@@ -1,11 +1,10 @@
 from pathlib import Path
 import torch
 
-#from models.SimpleAutoencoder720p_with_depth import SimpleAutoencoder720p_with_depth
-from training.unet.LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+from LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
 
 CHECKPOINT_PATH = Path("model_output/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../public/models/LightweightUNetDenoiser720p.onnx")
+ONNX_OUTPUT_PATH = Path("../../../public/models/LightweightUNetDenoiser720p.onnx")
 
 IN_CHANNELS = 4
 OUT_CHANNELS = 3
