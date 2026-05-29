@@ -25,7 +25,7 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderConfidence_FINAL_C24.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -70,7 +70,7 @@ const camera_controller = new TouchController(camera, canvas);
 //     rotationRate: [0.0000, 0.0005, 0.0001],
 //     angles: [20, 0, 180],
 //     distance: 1,
-//     distanceRate: 0.0, //0.00008
+//     distanceRate: 0.00000,
 //     target: [-1, 0, -1]
 // })
 
@@ -86,7 +86,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrence({
+const renderingPipeline = new RenderingPipelineModelInferrenceConfidence({
     device,
     context,
     format,
@@ -199,8 +199,8 @@ if (renderingPipeline.image_sampler) {
 
 if (renderingPipeline.temporal_confidence) {
     gui.add(renderingPipeline.temporal_confidence, 'historyWeight', 0, 1).name("historyWeight");
-    gui.add(renderingPipeline.temporal_confidence, 'maxHistoryConfidence', 0, 100).name("maxHistoryConfidence");
-    gui.add(renderingPipeline.temporal_confidence, 'depthThreshold', 0, 1).name("depthThreshold");
+    gui.add(renderingPipeline.temporal_confidence, 'maxHistoryConfidence', 1, 100).name("maxHistoryConfidence");
+    gui.add(renderingPipeline.temporal_confidence, 'relativeDepthThreshold', 0, 1).name("relativeDepthThreshold");
     gui.add(renderingPipeline.temporal_confidence, 'reprojectionDistancePixels', 0, 250).name("reprojectionDistancePixels");
 
     gui.add(renderingPipeline.temporal_confidence, 'colorHistLower', 0, 1).name("colorHistLower");

@@ -107,7 +107,7 @@ class SequenceDenoisingDataset(Dataset):
             else:
                 conf = torch.ones(1, self.target_size[0], self.target_size[1])
 
-            frames_x.append(torch.cat([rgb, depth, conf], dim=0))  # 5ch
+            frames_x.append(torch.cat([rgb, depth, conf], dim=0)) 
             frames_y.append(tgt)
             frames_c.append(conf)
 

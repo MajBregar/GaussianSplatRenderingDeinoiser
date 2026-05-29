@@ -37,7 +37,7 @@ export class RenderingPipelineDatasetGatherConfidence {
         this.scene  = scene;
         this.camera = camera;
 
-        this.renderer              = new SplatRenderer(device, stochastic_splatting_code, this.splatFormat, false);
+        this.noisy_renderer              = new SplatRenderer(device, stochastic_splatting_code, this.splatFormat, false);
         this.ground_truth_renderer = new SplatRenderer(device, sorted_splatting_code,     this.splatFormat, true);
         this.image_sampler         = new ImageSampler(device, 'nike');
         this.depth_converter       = new DepthCompositor(device, 'rgba8unorm');
@@ -83,19 +83,18 @@ export class RenderingPipelineDatasetGatherConfidence {
         this.trainingRenderInFlight = true;
         const t0 = performance.now();
 
-        this.#ensureTrainingResources();
+        this.#ensureResources();
 
-        // --- noisy render ---
-        this.renderer.render(
+        this.noisy_renderer.render(
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
+
         this.depth_converter.render(
             { color: this.depthExportTexture },
             this.directDepthTexture_A
-        );
+        ); //convert to rgba for export
 
-        // --- confidence accumulation ---
         const currentHistoryColor      = this.#getCurrentHistoryColorTexture();
         const currentHistoryDepth      = this.#getCurrentHistoryDepthTexture();
         const currentHistoryConfidence = this.#getCurrentHistoryConfidenceTexture();
@@ -134,11 +133,7 @@ export class RenderingPipelineDatasetGatherConfidence {
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
-        this.depth_converter.render(
-            { color: this.depthExportTexture },
-            this.directDepthTexture_A
-        );
-
+  
         const viewMatrix = getGlobalViewMatrix(this.camera);
         const projectionMatrix = getProjectionMatrix(this.camera);
         const currentViewProjectionMatrix = mat4.create();
@@ -147,13 +142,11 @@ export class RenderingPipelineDatasetGatherConfidence {
         if (this.saveRequested) {
             await this.device.queue.onSubmittedWorkDone();
             const gtColor = await this.image_sampler.readTexturePixels(this.directColorTexture_A);
-            const gtDepth = await this.image_sampler.readTexturePixels(this.depthExportTexture);
 
             this.image_sampler.queueSave(noiseColor, noiseDepth, 'noise', false);
             this.image_sampler.queueSave(historyColor, historyDepth, 'history', false);
             this.image_sampler.queueSaveSingle(noiseConfidence, 'confidence', false);
             this.image_sampler.queueSaveSingle(gtColor, 'gt_color', true);
-
             await this.image_sampler._saveChain;
         }
 
@@ -161,7 +154,7 @@ export class RenderingPipelineDatasetGatherConfidence {
 
         this.compositor.render(
             { color: this.context.getCurrentTexture() },
-            currentHistoryColorOutput,
+            this.confidenceExportTexture,
             1.0
         );
 
@@ -175,7 +168,7 @@ export class RenderingPipelineDatasetGatherConfidence {
         return true;
     }
 
-    #ensureTrainingResources() {
+    #ensureResources() {
         this.#resizeDirectColorTexture();
         this.#resizeDirectDepthTexture();
         this.#resizeDepthExportTexture();
@@ -294,7 +287,7 @@ export class RenderingPipelineDatasetGatherConfidence {
     #createConfidenceHistoryTexture() {
         return this.device.createTexture({
             size  : [this.canvas.width, this.canvas.height],
-            format: 'rgba8unorm',
+            format: 'r32float',
             usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
     }

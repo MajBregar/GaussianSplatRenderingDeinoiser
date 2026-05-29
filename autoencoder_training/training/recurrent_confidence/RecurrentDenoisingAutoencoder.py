@@ -25,7 +25,6 @@ class ConvNormRelu(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-
 class RecurrentBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
@@ -94,6 +93,7 @@ class RecurrentDenoisingAutoencoder(nn.Module):
 
         self._init_weights()
 
+
     def _init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -102,13 +102,6 @@ class RecurrentDenoisingAutoencoder(nn.Module):
                     nn.init.zeros_(m.bias)
         nn.init.zeros_(self.output_conv.weight)
         nn.init.zeros_(self.output_conv.bias)
-
-    def make_hidden_states(self, batch, height, width, device):
-        C = _make_channels(self.enc1.conv.block[0].out_channels, 5)
-        return tuple(
-            torch.zeros(batch, C[i], height >> (i+1), width >> (i+1), device=device)
-            for i in range(5)
-        )
 
     def forward(self, x, h1, h2, h3, h4, h5):
         B, C, H, W = x.shape

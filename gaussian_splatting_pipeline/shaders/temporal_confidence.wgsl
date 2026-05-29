@@ -10,7 +10,7 @@ struct Uniforms {
     inverseCurrentViewProjectionMatrix:  mat4x4f,
 
     historyWeight:              f32,
-    depthThreshold:             f32,
+    relativeDepthThreshold:             f32,
     firstFrame:                 f32,
     maxHistoryConfidence:       f32,
 
@@ -35,8 +35,8 @@ struct FragmentInput { @builtin(position) fragCoord: vec4f, @location(0) texcoor
 struct FragmentOutput {
     @location(0) confidence:        vec4f,
     @location(1) historyColor:      vec4f,
-    @location(2) historyDepth:      vec4f,
-    @location(3) historyConfidence: vec4f,
+    @location(2) historyDepth:      f32,
+    @location(3) historyConfidence: f32,
 }
 
 @vertex
@@ -47,87 +47,34 @@ fn vertex(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-fn uvToPixel(uv: vec2f, dims: vec2i) -> vec2i {
-    return clamp(vec2i(uv * vec2f(dims)), vec2i(0), dims - vec2i(1));
-}
-
-fn isGeometryDepth(depth: f32) -> bool {
-    return depth < 0.999999;
-}
-
-fn clipToUv(clipPosition: vec4f) -> vec2f {
-    let ndc = clipPosition.xyz / clipPosition.w;
-    return vec2f(ndc.x * 0.5 + 0.5, 1.0 - (ndc.y * 0.5 + 0.5));
-}
-
-fn uvIsValid(uv: vec2f) -> bool {
-    return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
-}
-
-fn reconstructWorldPosition(uv: vec2f, depth: f32) -> vec3f {
-    let clip = vec4f(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, depth, 1.0);
-    let world = uniforms.inverseCurrentViewProjectionMatrix * clip;
-    return world.xyz / world.w;
-}
-
-fn loadCurrentDepth(pixel: vec2i) -> f32 {
-    let dims = vec2i(textureDimensions(currentDepthTexture));
-    return textureLoad(currentDepthTexture, clamp(pixel, vec2i(0), dims - vec2i(1)), 0);
-}
-
-fn loadHistoryColorFromUv(uv: vec2f) -> vec4f {
-    let dims = vec2i(textureDimensions(historyColorTexture));
-    return textureLoad(historyColorTexture, uvToPixel(uv, dims), 0);
-}
-
-fn loadHistoryDepthFromUv(uv: vec2f) -> f32 {
-    let dims = vec2i(textureDimensions(historyDepthTexture));
-    return textureLoad(historyDepthTexture, uvToPixel(uv, dims), 0).r;
-}
-
-fn loadHistoryConfidenceFromUv(uv: vec2f) -> f32 {
-    let dims = vec2i(textureDimensions(historyConfidenceTexture));
-    // decode from rgba8unorm: confidence stored in r channel, normalized by maxHistoryConfidence
-    let encoded = textureLoad(historyConfidenceTexture, uvToPixel(uv, dims), 0).r;
-    return encoded * uniforms.maxHistoryConfidence;
-}
-
-fn encodeConfidence(confidence: f32) -> vec4f {
-    let normalized = clamp(confidence / max(uniforms.maxHistoryConfidence, 1.0), 0.0, 1.0);
-    return vec4f(normalized, normalized, normalized, 1.0);
-}
-
-fn encodeDepth(depth: f32) -> vec4f {
-    return vec4f(depth, depth, depth, 1.0);
-}
-
 struct ReprojectionResult {
-    uv:            vec2f,
+    previousUV:            vec2f,
     previousDepth: f32,
     valid:         bool,
 }
 
-fn computeHistoryUv(currentUv: vec2f, currentDepth: f32) -> ReprojectionResult {
+fn reprojectCurrentPixelUV(currentUv: vec2f, currentDepth: f32) -> ReprojectionResult {
     var result: ReprojectionResult;
-    result.uv = currentUv;
+    result.previousUV = currentUv;
     result.previousDepth = currentDepth;
     result.valid = false;
 
-    let worldPosition  = reconstructWorldPosition(currentUv, currentDepth);
-    let previousClip   = uniforms.previousViewProjectionMatrix * vec4f(worldPosition, 1.0);
+    let currentClip  = vec4f(currentUv.x * 2.0 - 1.0, (1.0 - currentUv.y) * 2.0 - 1.0, currentDepth, 1.0);
+    let currentWorld4 = uniforms.inverseCurrentViewProjectionMatrix * currentClip;
+    let currentWorld  = currentWorld4.xyz / currentWorld4.w;
 
+    let previousClip = uniforms.previousViewProjectionMatrix * vec4f(currentWorld, 1.0);
     if (previousClip.w <= 0.0) { return result; }
 
-    let pNDC       = previousClip.xyz / previousClip.w;
-    let historyUv  = clipToUv(previousClip);
+    let previousNDC = previousClip.xyz / previousClip.w;
+    let previousUV = vec2f(previousNDC.x * 0.5 + 0.5, 1.0 - (previousNDC.y * 0.5 + 0.5));
 
-    result.uv            = historyUv;
-    result.previousDepth = pNDC.z;
-    result.valid         =
-        pNDC.x >= -1.0 && pNDC.x <= 1.0 &&
-        pNDC.y >= -1.0 && pNDC.y <= 1.0 &&
-        pNDC.z >=  0.0 && pNDC.z <= 1.0 &&
-        uvIsValid(historyUv);
+    result.previousUV = previousUV;
+    result.previousDepth = previousNDC.z;
+    result.valid =
+        previousNDC.x >= -1.0 && previousNDC.x <= 1.0 &&
+        previousNDC.y >= -1.0 && previousNDC.y <= 1.0 &&
+        previousNDC.z >=  0.0 && previousNDC.z <= 1.0;
 
     return result;
 }
@@ -142,72 +89,62 @@ fn fragment(input: FragmentInput) -> FragmentOutput {
     var output: FragmentOutput;
     let dims = vec2i(textureDimensions(currentColorTexture));
     let dimsf = vec2f(textureDimensions(currentColorTexture));
+    let firstFrame = uniforms.firstFrame >= 0.5;
 
-    let currentPixel = clamp(vec2i(input.fragCoord.xy), vec2i(0), dims - vec2i(1));
-    let currentColor = textureLoad(currentColorTexture, currentPixel, 0);
-    let currentDepth = loadCurrentDepth(currentPixel);
 
-    let currentGeometry = isGeometryDepth(currentDepth);
-    let firstFrame      = uniforms.firstFrame >= 0.5;
+    let currentFragCoords = vec2i(input.fragCoord.xy);
+    let currentColor = textureLoad(currentColorTexture, currentFragCoords, 0);
+    let currentDepth = textureLoad(currentDepthTexture, currentFragCoords, 0);
+    let currentDepthNonBackground = currentDepth < 0.999999;
 
-    var historyUv          = input.texcoords;
-    var reprojectedDepth   = currentDepth;
-    var reprojectionValid  = false;
+    var previousFrameUV = input.texcoords;
+    var previousFrameDepth = currentDepth;
+    var reprojectionValid = false;
 
-    if (currentGeometry && !firstFrame) {
-        let reprojection  = computeHistoryUv(input.texcoords, currentDepth);
-        historyUv         = reprojection.uv;
-        reprojectedDepth  = reprojection.previousDepth;
+    if (currentDepthNonBackground && !firstFrame) {
+        let reprojection = reprojectCurrentPixelUV(input.texcoords, currentDepth);
+        previousFrameUV = reprojection.previousUV;
+        previousFrameDepth = reprojection.previousDepth;
         reprojectionValid = reprojection.valid;
     }
+    let previousFrameFragCoords = clamp(vec2i(previousFrameUV * vec2f(dims)), vec2i(0), dims - vec2i(1));
 
-    let historyDepth      = loadHistoryDepthFromUv(historyUv);
-    let historyConfidence = loadHistoryConfidenceFromUv(historyUv);
-    let historyGeometry   = isGeometryDepth(historyDepth);
-    let depthDifference   = abs(reprojectedDepth - historyDepth);
+    let historyDepth = textureLoad(historyDepthTexture, previousFrameFragCoords, 0).r;
+    let historyConfidence = textureLoad(historyConfidenceTexture, previousFrameFragCoords, 0).r;
 
-    let depthMask = 1.0 - smoothstep(
-        uniforms.depthThreshold * 0.75,
-        uniforms.depthThreshold,
-        depthDifference
-    );
+    let historyDepthNonBackground = historyDepth < 0.999999;
 
-    let reprojectionDistancePixels = length((historyUv - input.texcoords) * dimsf);
-    let distanceMask = clamp(
-        1.0 - reprojectionDistancePixels / uniforms.reprojectionDistancePixels,
-        0.0, 1.0
-    );
+    let relativeDepthDifference = abs(previousFrameDepth - historyDepth) / max(abs(historyDepth), 1e-6);
+    let depthMask = 1.0 - smoothstep(0.0, uniforms.relativeDepthThreshold, relativeDepthDifference);
 
-    let historyColor   = loadHistoryColorFromUv(historyUv).rgb;
-    let colorDiff      = colorVariance(currentColor.rgb, historyColor);
+    let reprojectionDistancePixels = length((previousFrameUV - input.texcoords) * dimsf);
+    let distanceMask = clamp(1.0 - reprojectionDistancePixels / uniforms.reprojectionDistancePixels, 0.0, 1.0);
+
+    let historyColor = textureLoad(historyColorTexture, previousFrameFragCoords, 0).rgb;
+    let colorDiff = colorVariance(currentColor.rgb, historyColor);
     let colorStability = 1.0 - smoothstep(uniforms.colorHistLower, uniforms.colorHistUpper, colorDiff);
 
     let historyUsable =
-        select(0.0, 1.0, currentGeometry)   *
-        select(0.0, 1.0, !firstFrame)       *
-        select(0.0, 1.0, reprojectionValid) *
-        select(0.0, 1.0, historyGeometry)   *
-        depthMask                           *
-        distanceMask                        *
+        select(0.0, 1.0, currentDepthNonBackground)   *
+        select(0.0, 1.0, !firstFrame)                 *
+        select(0.0, 1.0, reprojectionValid)           *
+        select(0.0, 1.0, historyDepthNonBackground)   *
+        depthMask                                     *
+        distanceMask                                  *
         colorStability;
 
+    let observationSupport = select(1.0, 0.0, !currentDepthNonBackground);
     let carriedConfidence = historyConfidence * historyUsable * uniforms.historyWeight;
-    let newConfidence = min(
-        carriedConfidence + 1.0,
-        max(uniforms.maxHistoryConfidence, 1.0)
-    );
+    let newConfidence = min(carriedConfidence + observationSupport, uniforms.maxHistoryConfidence);
+    let historyBlendFactor = carriedConfidence / max(newConfidence, 1e-6);
 
+    let blendedColor = mix(currentColor.rgb, historyColor, historyBlendFactor);
+    let blendedDepth = mix(currentDepth, historyDepth, historyBlendFactor);
+    output.historyColor = vec4f(blendedColor, 1.0);
+    output.historyDepth = blendedDepth;
 
-    let finalConfidence = select(newConfidence, uniforms.maxHistoryConfidence, !currentGeometry);
+    output.historyConfidence = newConfidence;
+    output.confidence = vec4f(newConfidence / uniforms.maxHistoryConfidence);
 
-    let blendFactor = carriedConfidence / newConfidence;
-    let blendedColor = mix(currentColor.rgb, historyColor, blendFactor);
-    let blendedDepth = mix(currentDepth, historyDepth, blendFactor);
-
-    output.historyColor      = vec4f(blendedColor, 1.0);
-    output.historyDepth      = encodeDepth(blendedDepth);
-    output.confidence        = encodeConfidence(finalConfidence);
-    output.historyConfidence = encodeConfidence(newConfidence);
-    
     return output;
 }

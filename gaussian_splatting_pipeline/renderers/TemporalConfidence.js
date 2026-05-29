@@ -11,10 +11,10 @@ export class TemporalConfidence {
 
         this.historyWeight = 1.0;
         this.maxHistoryConfidence = 7.0;
-        this.depthThreshold = 0.02;
+        this.relativeDepthThreshold = 0.2;
         this.reprojectionDistancePixels  = 250.0;
-        this.colorHistLower = 0.02;
-        this.colorHistUpper = 0.4;
+        this.colorHistLower = 0.0;
+        this.colorHistUpper = 1.0;
 
         this.layout = this.device.createBindGroupLayout({
             entries: [
@@ -22,7 +22,7 @@ export class TemporalConfidence {
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
-                { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
                 { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'non-filtering' } },
                 { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: {} },
             ],
@@ -38,8 +38,8 @@ export class TemporalConfidence {
                 targets: [
                     { format: this.format }, // confidence export
                     { format: this.format }, // next history color
-                    { format: 'r32float'  }, // next history depth
-                    { format: this.format }, // next history confidence
+                    { format: 'r32float' }, // next history depth
+                    { format: 'r32float' }, // next history confidence
                 ],
             },
         });
@@ -86,7 +86,7 @@ export class TemporalConfidence {
         uniformData.set(this.previousViewProjectionMatrix, 0);
         uniformData.set(inverseCurrentViewProjectionMatrix, 16);
         uniformData[32] = this.historyWeight;
-        uniformData[33] = this.depthThreshold;
+        uniformData[33] = this.relativeDepthThreshold;
         uniformData[34] = this.firstFrame ? 1.0 : 0.0;
         uniformData[35] = this.maxHistoryConfidence;
         uniformData[36] = this.reprojectionDistancePixels;

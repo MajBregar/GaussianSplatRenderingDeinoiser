@@ -23,7 +23,7 @@ export class RenderingPipelineModelInferrenceConfidence {
         this.perf    = performanceTracker ?? new PerformanceTracker();
 
         this.splatFormat  = 'rgba8unorm';
-        this.baseChannels = 32;
+        this.baseChannels = 24;
         this.pad_factor   = 32;
         this.canvas       = canvas;
         this.scene        = scene;
@@ -447,7 +447,7 @@ export class RenderingPipelineModelInferrenceConfidence {
     #createConfidenceHistoryTexture() {
         return this.device.createTexture({
             size  : [this.canvas.width, this.canvas.height],
-            format: 'rgba8unorm',
+            format: 'r32float',
             usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
     }

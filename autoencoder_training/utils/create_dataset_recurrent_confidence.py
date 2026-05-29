@@ -19,9 +19,11 @@ def depth_rgb_to_f32(path: str | Path) -> np.ndarray:
 
 
 def confidence_rgb_to_f32(path: str | Path) -> np.ndarray:
-    img = Image.open(path).convert("RGB")
-    rgb = np.asarray(img, dtype=np.float32)
-    return (rgb[..., 0] / 255.0).astype(np.float32)
+    img = Image.open(path).convert("RGBA")
+    rgba = np.asarray(img, dtype=np.float32)
+    confidence = rgba[..., 0] / 255.0
+    confidence[rgba[..., 3] == 0] = 0.0
+    return confidence.astype(np.float32)
 
 
 def save_depth_npy(input_png: str | Path, output_npy: str | Path) -> None:
@@ -210,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--out",         type=Path, default=Path("dataset_recurrent_orbit_cam"))
     parser.add_argument("--seq_stride",  type=int,  default=30)
     parser.add_argument("--eval_every",  type=int,  default=5)
-    parser.add_argument("--min_seq_len", type=int,  default=10)
+    parser.add_argument("--min_seq_len", type=int,  default=7)
     parser.add_argument("--no_confidence", action="store_true")
 
     args = parser.parse_args()

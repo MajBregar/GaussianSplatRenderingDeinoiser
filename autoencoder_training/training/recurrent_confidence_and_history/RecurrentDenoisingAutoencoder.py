@@ -103,13 +103,6 @@ class RecurrentDenoisingAutoencoder(nn.Module):
         nn.init.zeros_(self.output_conv.weight)
         nn.init.zeros_(self.output_conv.bias)
 
-    def make_hidden_states(self, batch, height, width, device):
-        C = _make_channels(self.enc1.conv.block[0].out_channels, 5)
-        return tuple(
-            torch.zeros(batch, C[i], height >> (i+1), width >> (i+1), device=device)
-            for i in range(5)
-        )
-
     def forward(self, x, h1, h2, h3, h4, h5):
         B, C, H, W = x.shape
         pH = (H + 31) // 32 * 32
