@@ -1,0 +1,320 @@
+{
+  "metadata": {
+    "device": "cuda",
+    "cuda_available": true,
+    "torch_version": "2.13.0.dev20260527+rocm7.2",
+    "torch_cuda_version": null,
+    "torch_hip_version": "7.2.53211",
+    "python_version": "3.13.5",
+    "platform": "Linux-6.17.0-14-generic-x86_64-with-glibc2.39",
+    "checkpoint_path": "../../final_models/recurrent_confidence_closed_rooms_C24/autoencoder_best.pt",
+    "checkpoint_epoch": 190,
+    "sequence_path": "../../benchmark_sequence",
+    "sequence_name": "benchmark_sequence",
+    "frames": 30,
+    "input_resolution": {
+      "height": 720,
+      "width": 1280
+    },
+    "padded_resolution": {
+      "height": 736,
+      "width": 1280
+    },
+    "warmup_runs": 5,
+    "preload_time_seconds": 0.9234535430000506,
+    "in_channels": 5,
+    "out_channels": 3,
+    "base_channels": 24,
+    "compile": {
+      "attempted": true,
+      "success": true,
+      "error": null,
+      "fullgraph": false,
+      "dynamic": false,
+      "cudagraphs_disabled": true,
+      "options": {
+        "triton.cudagraphs": false
+      }
+    }
+  },
+  "benchmarks": {
+    "eager": {
+      "frames": 30,
+      "total_ms": 652.8719249986352,
+      "mean_ms_per_frame": 21.762397499954506,
+      "median_ms_per_frame": 21.746710500110566,
+      "std_ms": 0.09604700238333351,
+      "min_ms": 21.613575000174023,
+      "max_ms": 22.09458099969197,
+      "throughput_fps": 45.95081952721847,
+      "frame_times_ms": [
+        22.03798199980156,
+        22.09458099969197,
+        21.689393000087875,
+        21.74224600003072,
+        21.687303999897267,
+        21.709996000026877,
+        21.72616999996535,
+        21.746223000263853,
+        21.776047999992443,
+        21.774461999939376,
+        21.687465000013617,
+        21.806424999795126,
+        21.788964999814198,
+        21.79731099977289,
+        21.74719799995728,
+        21.814844000346056,
+        21.649485000125424,
+        21.804386999974668,
+        21.787213999687083,
+        21.807027999784623,
+        21.613575000174023,
+        21.820686999944883,
+        21.75335099991571,
+        21.694934999686666,
+        21.709377999741264,
+        21.739488000093843,
+        21.69047400002455,
+        21.71440900019661,
+        21.760614999948302,
+        21.700285999941116
+      ]
+    },
+    "compiled": {
+      "frames": 30,
+      "total_ms": 216.78558299890938,
+      "mean_ms_per_frame": 7.226186099963646,
+      "median_ms_per_frame": 7.196346000000631,
+      "std_ms": 0.08334748890758055,
+      "min_ms": 7.135859000300115,
+      "max_ms": 7.461596000212012,
+      "throughput_fps": 138.3855862783593,
+      "frame_times_ms": [
+        7.447701999808487,
+        7.461596000212012,
+        7.4555989999680605,
+        7.300904999738123,
+        7.195420999778435,
+        7.217166999907931,
+        7.173871999839321,
+        7.171872000071744,
+        7.178608000231179,
+        7.232058000226971,
+        7.160996000038722,
+        7.184469000094396,
+        7.197271000222827,
+        7.253986999785411,
+        7.154762000027404,
+        7.161526000345475,
+        7.201597999937803,
+        7.184600999607937,
+        7.189160000052652,
+        7.2179720000349334,
+        7.135859000300115,
+        7.246941999710543,
+        7.193302999894513,
+        7.221590999961336,
+        7.249382999816589,
+        7.16811999973288,
+        7.190321000052791,
+        7.227301999591873,
+        7.218408999960957,
+        7.193210999957955
+      ]
+    }
+  },
+  "correctness": {
+    "frames": 30,
+    "max_absolute_error": 1.1920928955078125e-06,
+    "mean_absolute_error": 2.9472703921840095e-08,
+    "mean_rmse": 4.454335413110281e-08,
+    "per_frame": [
+      {
+        "frame": 0,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 2.872353732641386e-08,
+        "rmse": 4.3857799170154976e-08
+      },
+      {
+        "frame": 1,
+        "max_absolute_error": 9.5367431640625e-07,
+        "mean_absolute_error": 2.6027105803905215e-08,
+        "rmse": 4.080967030972715e-08
+      },
+      {
+        "frame": 2,
+        "max_absolute_error": 9.5367431640625e-07,
+        "mean_absolute_error": 2.987568947787622e-08,
+        "rmse": 4.509918483108777e-08
+      },
+      {
+        "frame": 3,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 2.702818768796078e-08,
+        "rmse": 4.1855489740783014e-08
+      },
+      {
+        "frame": 4,
+        "max_absolute_error": 9.834766387939453e-07,
+        "mean_absolute_error": 3.219274091748048e-08,
+        "rmse": 4.7639257871878726e-08
+      },
+      {
+        "frame": 5,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 3.177576601842702e-08,
+        "rmse": 4.716247303804266e-08
+      },
+      {
+        "frame": 6,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 3.7447211553853776e-08,
+        "rmse": 5.386820589592389e-08
+      },
+      {
+        "frame": 7,
+        "max_absolute_error": 8.940696716308594e-07,
+        "mean_absolute_error": 3.268635140329934e-08,
+        "rmse": 4.831477440347953e-08
+      },
+      {
+        "frame": 8,
+        "max_absolute_error": 8.046627044677734e-07,
+        "mean_absolute_error": 2.987673752841147e-08,
+        "rmse": 4.4642185059728945e-08
+      },
+      {
+        "frame": 9,
+        "max_absolute_error": 8.642673492431641e-07,
+        "mean_absolute_error": 3.249084556955495e-08,
+        "rmse": 4.742910775235032e-08
+      },
+      {
+        "frame": 10,
+        "max_absolute_error": 7.748603820800781e-07,
+        "mean_absolute_error": 2.86596897325353e-08,
+        "rmse": 4.293351807405088e-08
+      },
+      {
+        "frame": 11,
+        "max_absolute_error": 9.5367431640625e-07,
+        "mean_absolute_error": 2.826724099236344e-08,
+        "rmse": 4.29262421164367e-08
+      },
+      {
+        "frame": 12,
+        "max_absolute_error": 7.748603820800781e-07,
+        "mean_absolute_error": 2.7547599756871932e-08,
+        "rmse": 4.211342385929129e-08
+      },
+      {
+        "frame": 13,
+        "max_absolute_error": 8.046627044677734e-07,
+        "mean_absolute_error": 2.803855458921589e-08,
+        "rmse": 4.24605239857101e-08
+      },
+      {
+        "frame": 14,
+        "max_absolute_error": 7.748603820800781e-07,
+        "mean_absolute_error": 3.7903955529827726e-08,
+        "rmse": 5.3208598416176756e-08
+      },
+      {
+        "frame": 15,
+        "max_absolute_error": 8.940696716308594e-07,
+        "mean_absolute_error": 2.6898614891024408e-08,
+        "rmse": 4.167035427826704e-08
+      },
+      {
+        "frame": 16,
+        "max_absolute_error": 9.5367431640625e-07,
+        "mean_absolute_error": 3.134662662773735e-08,
+        "rmse": 4.6262538688779387e-08
+      },
+      {
+        "frame": 17,
+        "max_absolute_error": 1.0132789611816406e-06,
+        "mean_absolute_error": 2.7733625174164445e-08,
+        "rmse": 4.2654001219943893e-08
+      },
+      {
+        "frame": 18,
+        "max_absolute_error": 8.642673492431641e-07,
+        "mean_absolute_error": 2.944584842623499e-08,
+        "rmse": 4.4506798246857215e-08
+      },
+      {
+        "frame": 19,
+        "max_absolute_error": 8.940696716308594e-07,
+        "mean_absolute_error": 3.1482056073173226e-08,
+        "rmse": 4.644721940394447e-08
+      },
+      {
+        "frame": 20,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 3.291086159151746e-08,
+        "rmse": 4.808772402498107e-08
+      },
+      {
+        "frame": 21,
+        "max_absolute_error": 9.238719940185547e-07,
+        "mean_absolute_error": 2.720131320188557e-08,
+        "rmse": 4.262734520921185e-08
+      },
+      {
+        "frame": 22,
+        "max_absolute_error": 1.1920928955078125e-06,
+        "mean_absolute_error": 2.6804267250213343e-08,
+        "rmse": 4.1866798028422636e-08
+      },
+      {
+        "frame": 23,
+        "max_absolute_error": 1.1622905731201172e-06,
+        "mean_absolute_error": 3.030089246180978e-08,
+        "rmse": 4.5357499089959674e-08
+      },
+      {
+        "frame": 24,
+        "max_absolute_error": 7.748603820800781e-07,
+        "mean_absolute_error": 2.9166164594585098e-08,
+        "rmse": 4.4031928325694025e-08
+      },
+      {
+        "frame": 25,
+        "max_absolute_error": 1.0728836059570312e-06,
+        "mean_absolute_error": 2.5403078751651265e-08,
+        "rmse": 4.030650302411232e-08
+      },
+      {
+        "frame": 26,
+        "max_absolute_error": 9.5367431640625e-07,
+        "mean_absolute_error": 2.6812783104901428e-08,
+        "rmse": 4.198600578320111e-08
+      },
+      {
+        "frame": 27,
+        "max_absolute_error": 8.940696716308594e-07,
+        "mean_absolute_error": 2.6309864509244107e-08,
+        "rmse": 4.1657372662484704e-08
+      },
+      {
+        "frame": 28,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 2.6176916634312875e-08,
+        "rmse": 4.136895626061232e-08
+      },
+      {
+        "frame": 29,
+        "max_absolute_error": 8.344650268554688e-07,
+        "mean_absolute_error": 2.7646990474750055e-08,
+        "rmse": 4.3149125161789925e-08
+      }
+    ]
+  },
+  "speedup": {
+    "mean_ms_per_frame_ratio_eager_over_compiled": 3.011602136853906,
+    "fps_ratio_compiled_over_eager": 3.0116021368539054,
+    "mean_ms_per_frame_delta": 14.536211399990862,
+    "throughput_fps_delta": 92.43476675114084
+  }
+}

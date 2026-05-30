@@ -19,6 +19,8 @@ public/splats/backyard.splat
 public/splats/gym.splat
 public/splats/office.splat
 
+
+requirements_linux.txt
 tmp/*
 .venv
 get_structure.ps1
