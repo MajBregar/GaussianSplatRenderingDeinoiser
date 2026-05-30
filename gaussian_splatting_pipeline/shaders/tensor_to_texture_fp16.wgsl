@@ -1,12 +1,8 @@
-// tensor_to_texture.wgsl
-// Input buffer is array<u32> where each u32 holds two packed fp16 values.
-// Layout: [ch0_all_pixels, ch1_all_pixels, ch2_all_pixels] as fp16 pairs.
-// Channels are RGB, stride = width * height pixels.
-
 @group(0) @binding(0) var<storage, read>  inputTensor : array<u32>;
 @group(0) @binding(1) var                 outputTex   : texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(2) var<uniform>        dims        : vec4<u32>;
 
+// UNPACKS U32 INTO 2 FP16 FLOATS
 fn unpack_f16(packed: u32, high: bool) -> f32 {
     let bits = select(packed & 0xFFFFu, (packed >> 16u) & 0xFFFFu, high);
 
@@ -42,6 +38,5 @@ fn compute(@builtin(global_invocation_id) gid: vec3<u32>) {
     let g = unpack_f16(inputTensor[g_flat / 2u], (g_flat % 2u) == 1u);
     let b = unpack_f16(inputTensor[b_flat / 2u], (b_flat % 2u) == 1u);
 
-    textureStore(outputTex, vec2<i32>(i32(gid.x), i32(gid.y)),
-        vec4<f32>(clamp(r, 0.0, 1.0), clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0), 1.0));
+    textureStore(outputTex, vec2<i32>(i32(gid.x), i32(gid.y)), vec4<f32>(clamp(r, 0.0, 1.0), clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0), 1.0));
 }

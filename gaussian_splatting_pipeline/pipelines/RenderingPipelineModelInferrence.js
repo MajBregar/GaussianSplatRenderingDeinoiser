@@ -103,7 +103,7 @@ export class RenderingPipelineModelInferrence {
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('noisy_render');
 
         this.perf.begin('texture_to_tensor_noisy');
@@ -113,7 +113,7 @@ export class RenderingPipelineModelInferrence {
             this.inferenceInputBuffer,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('texture_to_tensor_noisy');
 
         this.perf.begin('inferrence_tensor_prep');
@@ -158,7 +158,7 @@ export class RenderingPipelineModelInferrence {
         this.perf.end('inferrence_call');
 
         this.perf.begin('inferrence');
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('inferrence');
 
         this.perf.begin('hidden_state_swap');
@@ -188,7 +188,7 @@ export class RenderingPipelineModelInferrence {
             this.inferenceOutputTexture,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         outMain.dispose?.();
         this.perf.end('output_tensor_to_texture');
 
@@ -198,7 +198,7 @@ export class RenderingPipelineModelInferrence {
             this.inferenceOutputTexture,
             1.0
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('screen_render');
     }
 

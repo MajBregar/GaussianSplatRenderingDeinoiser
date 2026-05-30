@@ -4,12 +4,12 @@ import torch
 
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
 
-CHECKPOINT_PATH  = Path("model_output_recurrent/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoder.onnx")
+CHECKPOINT_PATH  = Path("model_output_recurrent_no_conf_C24/autoencoder_best.pt")
+ONNX_OUTPUT_PATH = Path("../../../public/models/RecurrentDenoisingAutoencoder_C24.onnx")
 
 IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 32
+BASE         = 24
 HEIGHT       = 720
 WIDTH        = 1280
 

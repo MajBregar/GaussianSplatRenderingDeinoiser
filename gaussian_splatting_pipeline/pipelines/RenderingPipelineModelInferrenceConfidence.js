@@ -265,7 +265,7 @@ export class RenderingPipelineModelInferrenceConfidence {
         }
     }
 
-    // #cacheHiddenDims(width, height) { //hotfix for lightweight model
+    // #cacheHiddenDims(width, height) { //hotfix for lightweight model - can remove later
     //     const pH = Math.ceil(height / 32) * 32;
     //     const pW = Math.ceil(width  / 32) * 32;
     //     const allMeta = this.onnx_model.session.handler?.inputMetadata;

@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from PIL import Image
 
-from LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+from UNetDenoiser720p import UNetDenoiser720p
 
 
 CHECKPOINT_PATH = Path("model_output/autoencoder_best.pt")

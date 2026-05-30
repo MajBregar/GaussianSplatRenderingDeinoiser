@@ -150,11 +150,11 @@ export class RenderingPipelineDatasetGatherConfidence {
             await this.image_sampler._saveChain;
         }
 
-        const currentHistoryColorOutput = this.#getCurrentHistoryColorTexture();
+        //const currentHistoryColorOutput = this.#getCurrentHistoryColorTexture();
 
         this.compositor.render(
             { color: this.context.getCurrentTexture() },
-            this.confidenceExportTexture,
+            this.directColorTexture_A,
             1.0
         );
 

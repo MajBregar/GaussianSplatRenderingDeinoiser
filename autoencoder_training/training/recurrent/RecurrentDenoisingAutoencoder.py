@@ -25,7 +25,6 @@ class ConvNormRelu(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-
 class RecurrentBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
@@ -93,6 +92,7 @@ class RecurrentDenoisingAutoencoder(nn.Module):
         self.output_conv = nn.Conv2d(C[0], out_channels, kernel_size=1)
 
         self._init_weights()
+
 
     def _init_weights(self):
         for m in self.modules():

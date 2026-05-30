@@ -6,22 +6,22 @@ from torch.optim import AdamW
 from tqdm import tqdm
 
 from load_dataset import load_dataset
-from LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+from UNetDenoiser720p import UNetDenoiser720p
 
 
-TRAINING_EPOCHS  = 100
+TRAINING_EPOCHS  = 150
 PATCH_SIZE       = 128
 BATCH_SIZE       = 4
 NUM_WORKERS      = 8
 
-MODEL_OUTPUT_DIR = Path("model_output")
+MODEL_OUTPUT_DIR = Path("model_output_garden_C24")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATASET_PATH = '../../dataset_unet'
 
 IN_CHANNELS   = 4
 OUT_CHANNELS  = 3
-BASE_CHANNELS = 32
+BASE_CHANNELS = 24
 TARGET_SIZE   = (720, 1280)
 
 
@@ -68,10 +68,10 @@ if __name__ == "__main__":
     )
     print("Dataset Loaded")
 
-    model = LightweightUNetDenoiser720p(
+    model = UNetDenoiser720p(
         in_channels=IN_CHANNELS,
         out_channels=OUT_CHANNELS,
-        base_channels=BASE_CHANNELS,
+        base=BASE_CHANNELS,
     ).to(device)
 
     criterion = nn.L1Loss()

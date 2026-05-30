@@ -1,14 +1,14 @@
 from pathlib import Path
 import torch
 
-from LightweightUNetDenoiser720p import LightweightUNetDenoiser720p
+from UNetDenoiser720p import UNetDenoiser720p
 
-CHECKPOINT_PATH = Path("model_output/autoencoder_best.pt")
-ONNX_OUTPUT_PATH = Path("../../../public/models/LightweightUNetDenoiser720p.onnx")
+CHECKPOINT_PATH = Path("model_output_garden_C24/autoencoder_best.pt")
+ONNX_OUTPUT_PATH = Path("../../../public/models/UNetDenoiser720p_garden_C24.onnx")
 
 IN_CHANNELS = 4
 OUT_CHANNELS = 3
-BASE_CHANNELS = 32
+BASE_CHANNELS = 24
 HEIGHT = 720
 WIDTH = 1280
 
@@ -16,10 +16,10 @@ WIDTH = 1280
 def load_model(checkpoint_path: Path, device: str):
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    model = LightweightUNetDenoiser720p(
+    model = UNetDenoiser720p(
         in_channels=checkpoint.get("in_channels", IN_CHANNELS),
         out_channels=checkpoint.get("out_channels", OUT_CHANNELS),
-        base_channels=checkpoint.get("base_channels", BASE_CHANNELS),
+        base=checkpoint.get("base_channels", BASE_CHANNELS),
     ).to(device)
 
     model.load_state_dict(checkpoint["model_state_dict"])

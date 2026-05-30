@@ -18,7 +18,9 @@ public/splats/garden.splat
 public/splats/backyard.splat
 public/splats/gym.splat
 public/splats/office.splat
+public/splats/kitchen.splat
 
+papers
 
 requirements_linux.txt
 tmp/*

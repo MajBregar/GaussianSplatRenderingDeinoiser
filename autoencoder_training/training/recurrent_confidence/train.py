@@ -14,7 +14,7 @@ from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_c
 from load_dataset import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 200
+TRAINING_EPOCHS = 150
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
 BATCH_SIZE      = 1
@@ -29,8 +29,8 @@ W_SPATIAL  = 0.8
 W_GRADIENT = 0.1
 W_TEMPORAL = 0.1
 
-DATASET_PATH = '../../dataset_seq_confidence_closed_rooms'
-MODEL_OUTPUT_DIR = Path("model_output_recurrent_closed_rooms_C24")
+DATASET_PATH = '../../dataset_seq_garden_confidence'
+MODEL_OUTPUT_DIR = Path("model_output_recurrent_garden_C24")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_PATH = MODEL_OUTPUT_DIR / "training_log.json"

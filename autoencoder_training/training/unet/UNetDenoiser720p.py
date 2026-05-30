@@ -26,31 +26,16 @@ class ConvNormRelu(nn.Module):
         return self.block(x)
 
 
-class RecurrentBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int):
-        super().__init__()
-        self.conv1 = ConvNormRelu(in_ch, out_ch)
-        self.conv2 = ConvNormRelu(out_ch + out_ch, out_ch)
-        self.conv3 = ConvNormRelu(out_ch, out_ch)
-
-    def forward(self, x, h_prev):
-        f = self.conv1(x)
-        f = torch.cat([f, h_prev], dim=1)
-        f = self.conv2(f)
-        return self.conv3(f)
-
-
 class EncoderStage(nn.Module):
     def __init__(self, in_ch: int, out_ch: int):
         super().__init__()
-        self.conv = ConvNormRelu(in_ch, out_ch)
-        self.rcnn = RecurrentBlock(out_ch, out_ch)
-        self.pool = nn.MaxPool2d(2, 2)
+        self.conv1 = ConvNormRelu(in_ch, out_ch)
+        self.conv2 = ConvNormRelu(out_ch, out_ch)
+        self.pool  = nn.MaxPool2d(2, 2)
 
-    def forward(self, x, h_prev):
-        f     = self.conv(x)
-        h_new = self.rcnn(f, h_prev)
-        return h_new, self.pool(h_new), h_new
+    def forward(self, x):
+        f = self.conv2(self.conv1(x))
+        return f, self.pool(f)
 
 
 class DecoderStage(nn.Module):
@@ -65,10 +50,7 @@ class DecoderStage(nn.Module):
         return self.conv2(self.conv1(x))
 
 
-
-
-
-class RecurrentDenoisingAutoencoder(nn.Module):
+class UNetDenoiser720p(nn.Module):
     def __init__(self, in_channels: int = 4, out_channels: int = 3, base: int = 32):
         super().__init__()
         C = _make_channels(base, 5)
@@ -103,18 +85,18 @@ class RecurrentDenoisingAutoencoder(nn.Module):
         nn.init.zeros_(self.output_conv.weight)
         nn.init.zeros_(self.output_conv.bias)
 
-    def forward(self, x, h1, h2, h3, h4, h5):
+    def forward(self, x):
         B, C, H, W = x.shape
         pH = (H + 31) // 32 * 32
         pW = (W + 31) // 32 * 32
         x = F.pad(x, (0, pW - W, 0, pH - H))
         rgb = x[:, :3]
 
-        skip1, x, h1_out = self.enc1(x, h1)
-        skip2, x, h2_out = self.enc2(x, h2)
-        skip3, x, h3_out = self.enc3(x, h3)
-        skip4, x, h4_out = self.enc4(x, h4)
-        skip5, x, h5_out = self.enc5(x, h5)
+        skip1, x = self.enc1(x)
+        skip2, x = self.enc2(x)
+        skip3, x = self.enc3(x)
+        skip4, x = self.enc4(x)
+        skip5, x = self.enc5(x)
 
         x = self.bottleneck(x)
 
@@ -125,6 +107,4 @@ class RecurrentDenoisingAutoencoder(nn.Module):
         x = self.dec1(x, skip1)
 
         output = torch.sigmoid(self.output_conv(x) + rgb)
-        output = output[:, :, :H, :W]
-
-        return output, h1_out, h2_out, h3_out, h4_out, h5_out
+        return output[:, :, :H, :W]

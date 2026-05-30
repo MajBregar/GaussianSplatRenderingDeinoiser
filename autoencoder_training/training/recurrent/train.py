@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,23 +14,26 @@ from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_c
 from load_dataset import load_sequence_dataset
 
 
-TRAINING_EPOCHS = 153
+TRAINING_EPOCHS = 150
 SEQ_LEN         = 7
 PATCH_SIZE      = 128
 BATCH_SIZE      = 1
 LR              = 1e-3
-LR_WARMUP       = 10
+LR_MIN          = 5e-6
 
 IN_CHANNELS  = 4
 OUT_CHANNELS = 3
-BASE         = 32
+BASE         = 24
 
-W_SPATIAL  = 0.75
+W_SPATIAL  = 0.8
 W_GRADIENT = 0.1
-W_TEMPORAL = 0.15
+W_TEMPORAL = 0.1
 
-MODEL_OUTPUT_DIR = Path("model_output_recurrent")
+DATASET_PATH = '../../dataset_seq_no_conf_garden'
+MODEL_OUTPUT_DIR = Path("model_output_recurrent_no_conf_C24")
 MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+LOG_PATH = MODEL_OUTPUT_DIR / "training_log.json"
 
 
 def _gaussian_frame_weights(n: int) -> torch.Tensor:
@@ -108,6 +112,35 @@ def zero_hidden(batch_size: int, base: int, patch_h: int, patch_w: int, device: 
     )
 
 
+def load_training_log() -> list[dict]:
+    if LOG_PATH.exists():
+        with open(LOG_PATH, "r") as f:
+            log = json.load(f)
+        print(f"Loaded training log ({len(log)} epochs)")
+        return log
+    return []
+
+
+def append_training_log(log: list[dict], epoch: int, train_loss: float, eval_loss: float, lr: float):
+    log.append({
+        "epoch":      epoch + 1,
+        "train_loss": round(train_loss, 8),
+        "eval_loss":  round(eval_loss,  8),
+        "lr":         lr,
+    })
+    with open(LOG_PATH, "w") as f:
+        json.dump(log, f, indent=2)
+
+
+def build_scheduler(optimizer: AdamW, start_epoch: int) -> CosineAnnealingLR:
+    return CosineAnnealingLR(
+        optimizer,
+        T_max=TRAINING_EPOCHS,
+        eta_min=LR_MIN,
+        last_epoch=start_epoch - 1,
+    )
+
+
 def save_checkpoint(model, optimizer, scheduler, epoch, train_loss, eval_loss, path):
     torch.save({
         "epoch":                epoch + 1,
@@ -121,17 +154,22 @@ def save_checkpoint(model, optimizer, scheduler, epoch, train_loss, eval_loss, p
         "base_channels":        BASE,
         "patch_size":           PATCH_SIZE,
         "seq_len":              SEQ_LEN,
+        "lr":                   LR,
+        "lr_min":               LR_MIN,
     }, path)
 
 
-def load_checkpoint(path, model, optimizer, scheduler, device):
+def load_checkpoint(path, model, optimizer, device):
     ckpt = torch.load(path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
     start_epoch = ckpt["epoch"]
+
+    scheduler = build_scheduler(optimizer, start_epoch)
+    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+
     print(f"Resumed from {path} (epoch {start_epoch})")
-    return start_epoch
+    return start_epoch, scheduler
 
 
 @torch.no_grad()
@@ -203,8 +241,8 @@ if __name__ == "__main__":
 
     print("Loading datasets...")
     train_loader, eval_loader = load_sequence_dataset(
-        train_folder="../../dataset_recurrent_zoom/train",
-        eval_folder="../../dataset_recurrent_zoom/eval",
+        train_folder=f"{DATASET_PATH}/train",
+        eval_folder=f"{DATASET_PATH}/eval",
         seq_len=SEQ_LEN,
         batch_size=BATCH_SIZE,
         target_size=(720, 1280),
@@ -222,24 +260,24 @@ if __name__ == "__main__":
 
     optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.99), weight_decay=1e-4)
 
-    def warmup_lambda(epoch):
-        if epoch < LR_WARMUP:
-            factor = 10.0 ** (1.0 / LR_WARMUP)
-            return factor ** (epoch - LR_WARMUP)
-        return 1.0
-
-    warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
-    cosine_scheduler = CosineAnnealingLR(optimizer, T_max=TRAINING_EPOCHS - LR_WARMUP, eta_min=1e-6)
-
     frame_weights = _gaussian_frame_weights(SEQ_LEN)
     print(f"Frame weights: {[f'{w:.3f}' for w in frame_weights.tolist()]}")
 
     start_epoch = 0
     resume_path = MODEL_OUTPUT_DIR / "autoencoder_latest.pt"
+
     if resume_path.exists():
-        start_epoch = load_checkpoint(resume_path, model, optimizer, warmup_scheduler, device)
+        start_epoch, scheduler = load_checkpoint(resume_path, model, optimizer, device)
+    else:
+        scheduler = build_scheduler(optimizer, start_epoch)
+
+    training_log = load_training_log()
 
     best_eval_loss = float("inf")
+    if training_log:
+        best_eval_loss = min(entry["eval_loss"] for entry in training_log)
+        print(f"Best eval loss so far: {best_eval_loss:.6f}")
+
     at_epoch = start_epoch
 
     print("Beginning training...")
@@ -251,21 +289,21 @@ if __name__ == "__main__":
                 model, train_loader, optimizer, frame_weights, device, epoch
             )
 
-            if epoch < LR_WARMUP:
-                warmup_scheduler.step()
-            else:
-                cosine_scheduler.step()
+            scheduler.step()
 
             eval_loss = evaluate(model, eval_loader, frame_weights, device)
+            current_lr = optimizer.param_groups[0]["lr"]
 
             print(
                 f"Epoch {epoch + 1:03d}/{TRAINING_EPOCHS}  "
                 f"train={train_loss:.6f}  eval={eval_loss:.6f}  "
-                f"lr={optimizer.param_groups[0]['lr']:.2e}"
+                f"lr={current_lr:.2e}"
             )
 
+            append_training_log(training_log, epoch, train_loss, eval_loss, current_lr)
+
             save_checkpoint(
-                model, optimizer, warmup_scheduler, epoch,
+                model, optimizer, scheduler, epoch,
                 train_loss, eval_loss,
                 MODEL_OUTPUT_DIR / "autoencoder_latest.pt",
             )
@@ -273,7 +311,7 @@ if __name__ == "__main__":
             if eval_loss < best_eval_loss:
                 best_eval_loss = eval_loss
                 save_checkpoint(
-                    model, optimizer, warmup_scheduler, epoch,
+                    model, optimizer, scheduler, epoch,
                     train_loss, eval_loss,
                     MODEL_OUTPUT_DIR / "autoencoder_best.pt",
                 )
@@ -282,7 +320,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
         save_checkpoint(
-            model, optimizer, warmup_scheduler, at_epoch,
+            model, optimizer, scheduler, at_epoch,
             0.0, 0.0,
             MODEL_OUTPUT_DIR / "autoencoder_interrupted.pt",
         )

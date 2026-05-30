@@ -25,7 +25,7 @@ import { OnnxModelInitializer } from './gaussian_splatting_pipeline/OnnxModelIni
 import * as ort from 'onnxruntime-web/webgpu';
 import { PerformanceTracker } from './gaussian_splatting_pipeline/PerformanceTracker.js';
 
-const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderConfidence_FINAL_C24.onnx';
+const MODEL_NAME = '/models/RecurrentDenoisingAutoencoderConfidence_FINAL_C24FP16.onnx';
 //const MODEL_NAME = '/models/LightweightUNetDenoiser720p.onnx';
 
 const INFERENCE_WIDTH = 1280;
@@ -86,7 +86,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineModelInferrenceConfidence({
+const renderingPipeline = new RenderingPipelineDatasetGatherConfidence({
     device,
     context,
     format,
@@ -103,7 +103,7 @@ const splatLoader = new SplatLoader({
     canvas,
     splatContainer,
     renderingPipeline,
-    defaultFile: './splats/office.splat',
+    defaultFile: './splats/kitchen.splat',
 });
 
 await splatLoader.initialize();

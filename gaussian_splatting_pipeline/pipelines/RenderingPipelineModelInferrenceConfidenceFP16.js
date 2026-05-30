@@ -23,7 +23,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
         this.perf    = performanceTracker ?? new PerformanceTracker();
 
         this.splatFormat  = 'rgba8unorm';
-        this.baseChannels = 32;
+        this.baseChannels = 24;
         this.pad_factor   = 32;
         this.canvas       = canvas;
         this.scene        = scene;
@@ -117,16 +117,8 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('noisy_render');
-
-        this.perf.begin('depth_convert');
-        this.depth_converter.render(
-            { color: this.depthExportTexture },
-            this.directDepthTexture_A
-        );
-        await this.device.queue.onSubmittedWorkDone();
-        this.perf.end('depth_convert');
 
         this.perf.begin('confidence');
         const currentHistoryColor      = this.#getCurrentHistoryColorTexture();
@@ -151,7 +143,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             currentHistoryConfidence,
         );
         this.#swapTemporalHistoryBuffers();
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('confidence');
 
         this.perf.begin('texture_to_tensor');
@@ -162,7 +154,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             this.inferenceInputBufferF32,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('texture_to_tensor');
 
         this.perf.begin('fp32_to_fp16');
@@ -171,7 +163,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             this.inferenceInputBufferF16,
             5 * width * height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('fp32_to_fp16');
 
         this.perf.begin('inferrence_tensor_prep');
@@ -213,7 +205,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
         this.perf.end('inferrence_call');
 
         this.perf.begin('inferrence_sync');
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('inferrence_sync');
 
         this.perf.begin('hidden_state_swap');
@@ -240,7 +232,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             this.inferenceOutputTexture,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         outMain.dispose?.();
         this.perf.end('output_tensor_to_texture');
 
@@ -250,7 +242,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
             this.inferenceOutputTexture,
             1.0
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('screen_render');
     }
 
@@ -440,7 +432,7 @@ export class RenderingPipelineModelInferrenceConfidenceFP16 {
     #createConfidenceHistoryTexture() {
         return this.device.createTexture({
             size  : [this.canvas.width, this.canvas.height],
-            format: 'rgba8unorm',
+            format: 'r32float',
             usage : GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
     }

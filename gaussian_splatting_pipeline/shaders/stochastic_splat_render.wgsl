@@ -124,7 +124,6 @@ fn vertex(input: VertexInput) -> VertexOutput {
 
     let B = J * V * R * S;
 
-    // Covariance matrix eigenvalues & eigenvectors
     let C = B * transpose(B);
     let a = C[0][0] + camera.screenResolutionInvSq.x;
     let b = C[0][1];
@@ -137,7 +136,6 @@ fn vertex(input: VertexInput) -> VertexOutput {
     let V1 = normalize(vec2f(b, L1 - a)) * sqrt(L1);
     let V2 = normalize(vec2f(a - L1, b)) * sqrt(L2);
 
-    // 4 combinations for 4 vertices of the quad
     let vertex = vertices[input.vertexIndex];
     let x = vertex.x * V1 * splat.scale;
     let y = vertex.y * V2 * splat.scale;
