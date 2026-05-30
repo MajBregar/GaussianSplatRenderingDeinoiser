@@ -67,11 +67,11 @@ const LONG_FREEZE_DURATION_FRAMES = 20;
 
 const camera_controller = new TouchController(camera, canvas);
 // const camera_controller = new AutomaticController(camera, canvas, {
-//     rotationRate: [0.0000, 0.0005, 0.0001],
+//     rotationRate: [0.0000, 0.0005, 0.0000],
 //     angles: [20, 0, 180],
 //     distance: 1,
 //     distanceRate: 0.00000,
-//     target: [-1, 0, -1]
+//     target: [0, 0, 0]
 // })
 
 camera.addComponent(start_camera_transform);
@@ -103,7 +103,7 @@ const splatLoader = new SplatLoader({
     canvas,
     splatContainer,
     renderingPipeline,
-    defaultFile: './splats/garden.splat',
+    defaultFile: './splats/office.splat',
 });
 
 await splatLoader.initialize();

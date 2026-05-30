@@ -23,7 +23,7 @@ export class RenderingPipelineModelInferrenceConfidence {
         this.perf    = performanceTracker ?? new PerformanceTracker();
 
         this.splatFormat  = 'rgba8unorm';
-        this.baseChannels = 24;
+        this.baseChannels = 32;
         this.pad_factor   = 32;
         this.canvas       = canvas;
         this.scene        = scene;
@@ -110,25 +110,22 @@ export class RenderingPipelineModelInferrenceConfidence {
         const width  = this.canvas.width;
         const height = this.canvas.height;
 
-        // --- noisy render ---
         this.perf.begin('noisy_render');
         this.renderer.render(
             { color: this.directColorTexture_A, depth: this.directDepthTexture_A },
             this.scene, this.camera
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('noisy_render');
 
-        // --- depth export ---
         this.perf.begin('depth_convert');
         this.depth_converter.render(
             { color: this.depthExportTexture },
             this.directDepthTexture_A
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('depth_convert');
 
-        // --- confidence pass ---
         this.perf.begin('confidence');
         const currentHistoryColor      = this.#getCurrentHistoryColorTexture();
         const currentHistoryDepth      = this.#getCurrentHistoryDepthTexture();
@@ -152,10 +149,9 @@ export class RenderingPipelineModelInferrenceConfidence {
             currentHistoryConfidence,
         );
         this.#swapTemporalHistoryBuffers();
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('confidence');
 
-        // --- pack input tensor: color + depth + confidence = 5ch ---
         this.perf.begin('texture_to_tensor');
         this.textureToTensorConverter.render(
             this.directColorTexture_A,
@@ -164,10 +160,9 @@ export class RenderingPipelineModelInferrenceConfidence {
             this.inferenceInputBuffer,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('texture_to_tensor');
 
-        // --- build feeds ---
         this.perf.begin('inferrence_tensor_prep');
         const inputTensor = new ort.Tensor({
             location : 'gpu-buffer',
@@ -199,7 +194,6 @@ export class RenderingPipelineModelInferrenceConfidence {
         }
         this.perf.end('inferrence_tensor_prep');
 
-        // --- inference ---
         this.perf.begin('inferrence_call');
         let results;
         try {
@@ -211,10 +205,9 @@ export class RenderingPipelineModelInferrenceConfidence {
         this.perf.end('inferrence_call');
 
         this.perf.begin('inferrence_sync');
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('inferrence_sync');
 
-        // --- swap hidden states ---
         this.perf.begin('hidden_state_swap');
         for (const outName of this.hiddenOutputNames) {
             const key    = outName.replace('_out', '');
@@ -230,7 +223,6 @@ export class RenderingPipelineModelInferrenceConfidence {
         this.hiddenReady = true;
         this.perf.end('hidden_state_swap');
 
-        // --- write output to texture ---
         this.perf.begin('output_tensor_to_texture');
         const outMain = results['output'];
         if (!outMain?.gpuBuffer)
@@ -240,18 +232,17 @@ export class RenderingPipelineModelInferrenceConfidence {
             this.inferenceOutputTexture,
             width, height
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         outMain.dispose?.();
         this.perf.end('output_tensor_to_texture');
 
-        // --- composite to screen ---
         this.perf.begin('screen_render');
         this.compositor.render(
             { color: this.context.getCurrentTexture() },
             this.inferenceOutputTexture,
             1.0
         );
-        await this.device.queue.onSubmittedWorkDone();
+        //await this.device.queue.onSubmittedWorkDone();
         this.perf.end('screen_render');
     }
 

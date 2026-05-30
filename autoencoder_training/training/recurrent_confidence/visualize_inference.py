@@ -9,14 +9,14 @@ from PIL import Image
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
 
 
-CHECKPOINT_PATH = Path("model_output_recurrent/autoencoder_best.pt")
-DATASET_PATH    = Path("../../dataset_seq_garden_old_confidence")
+CHECKPOINT_PATH = Path("model_output_recurrent_closed_rooms_C24/autoencoder_best.pt")
+DATASET_PATH    = Path("../../dataset_seq_confidence_closed_rooms")
 OUTPUT_DIR      = Path("inference_vis_output")
 SEQ_INDEX       = 0
 
 IN_CHANNELS  = 5
 OUT_CHANNELS = 3
-BASE         = 32
+BASE         = 24
 
 
 def zero_hidden(batch_size: int, base: int, h: int, w: int, device: torch.device):
