@@ -2,6 +2,15 @@
 
 WebGPU pipeline for running a denoising recurrent autoencoder model on noisy stochastic Gaussian splat renders. Inference is run on the ONNX backend.
 
+<p align="center">
+  <img src="figures/comparison_grid_garden.gif" alt="Model comparison on Garden scene" width="800">
+</p>
+
+<p align="center">
+  <img src="figures/comparison_grid_kitchen.gif" alt="Model comparison on Kitchen scene" width="800">
+</p>
+
+
 A demo scene of an office environment is provided under:
 
 ```text

@@ -1,2 +1,0 @@
-checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,num_temporal_pairs,num_seq7_windows,mean_l1,mean_gradient_l1,mean_temporal_delta_l1,mean_sliding_seq7_loss
-model_output_recurrent_closed_rooms_C24\autoencoder_best.pt,../../dataset_evaluation_kitchen_history,190,254,253,248,0.05718749868646851,0.007532452625464502,0.018646581980064806,0.01936091572767304

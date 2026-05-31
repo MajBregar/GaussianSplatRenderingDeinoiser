@@ -1,0 +1,2 @@
+checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,mean_rmse,mean_ssim
+model_output_garden_C24\autoencoder_best.pt,../../dataset_evaluation_garden_history,136,204,0.06657999189680114,0.6237245352537024

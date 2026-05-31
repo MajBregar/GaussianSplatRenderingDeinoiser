@@ -1,2 +1,2 @@
-checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,num_temporal_pairs,num_seq7_windows,mean_l1,mean_gradient_l1,mean_temporal_delta_l1,mean_sliding_seq7_loss
-model_output_recurrent_no_conf_closed_rooms_C24\autoencoder_best.pt,../../dataset_evaluation_garden_history/,189,204,203,198,0.038383818295437334,0.02110897277153152,0.03734385519944535,0.016124295950349834
+checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,mean_rmse,mean_ssim
+model_output_recurrent_no_conf_closed_rooms_C24\autoencoder_best.pt,../../dataset_evaluation_garden_history/,189,204,0.05420190556084409,0.6964299648123629

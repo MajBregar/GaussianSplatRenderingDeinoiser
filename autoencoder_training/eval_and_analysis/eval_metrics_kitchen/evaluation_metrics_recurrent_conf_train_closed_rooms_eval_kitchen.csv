@@ -1,0 +1,2 @@
+checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,mean_rmse,mean_ssim
+model_output_recurrent_closed_rooms_C24\autoencoder_best.pt,../../dataset_evaluation_kitchen_history,190,254,0.06734682107710932,0.8240289556698537

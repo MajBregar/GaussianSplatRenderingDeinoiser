@@ -10,11 +10,11 @@ from UNetDenoiser720p import UNetDenoiser720p
 
 
 CHECKPOINT_PATH = Path("model_output_garden_C24/autoencoder_best.pt")
-DATASET_PATH = Path("../../dataset_evaluation_kitchen_history/")
-OUTPUT_DIR = Path("unet_train_garden_eval_kitchen")
+DATASET_PATH = Path("../../dataset_evaluation_garden_history/")
+OUTPUT_DIR = Path("unet_train_closed_rooms_eval_garden")
 
 SEQ_INDEX = 0
-INFER_FRAMES = 10
+INFER_FRAMES = 30
 
 IN_CHANNELS = 4
 OUT_CHANNELS = 3

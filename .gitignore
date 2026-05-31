@@ -8,6 +8,8 @@ autoencoder_training/*.ckpt
 **/model_output*
 
 autoencoder_training/eval_and_analysis/visualizaton_frames
+autoencoder_training/eval_and_analysis/random_images
+
 
 public/splats/debug_horizontal.splat
 public/splats/debug_vertical.splat

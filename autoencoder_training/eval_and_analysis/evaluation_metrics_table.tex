@@ -1,19 +1,20 @@
 \begin{table}
 \caption{Evaluation metrics for different models, training datasets, and evaluation datasets.}
 \label{tab:evaluation_metric_results}
-\begin{tabular}{lllrrrr}
+\begin{tabular}{lllrr}
 \toprule
-Model & Training Dataset & Evaluation Dataset & L1 & Gradient L1 & Temporal Delta L1 & Sequence Loss \\
+Model & Training Dataset & Evaluation Dataset & RMSE & SSIM \\
 \midrule
-U-Net & Garden & Kitchen & 0.025545 & 0.007484 & 0.019091 & 0.023086 \\
-Recurrent & Garden & Kitchen & 0.019515 & 0.007129 & 0.016840 & 0.007847 \\
-Recurrent & Garden + Gym + Office & Kitchen & 0.015617 & 0.006846 & 0.015240 & 0.006506 \\
-Recurrent + Conf. & Garden & Kitchen & 0.022702 & 0.007493 & 0.018135 & 0.008957 \\
-Recurrent + Conf. & Garden + Gym + Office & Kitchen & 0.057187 & 0.007532 & 0.018647 & 0.019361 \\
-Recurrent & Garden & Garden & 0.038258 & 0.020736 & 0.037074 & 0.016051 \\
-Recurrent & Garden + Gym + Office & Garden & 0.038384 & 0.021109 & 0.037344 & 0.016124 \\
-Recurrent + Conf. & Garden & Garden & 0.040013 & 0.021395 & 0.038408 & 0.016746 \\
-Recurrent + Conf. & Garden + Gym + Office & Garden & 0.065925 & 0.022893 & 0.042028 & 0.024941 \\
+U-Net & Garden & Garden & 0.066580 & 0.623725 \\
+Recurrent & Garden & Garden & 0.054047 & 0.703935 \\
+Recurrent & Garden + Gym + Office & Garden & 0.054202 & 0.696430 \\
+Recurrent + Conf. & Garden & Garden & 0.055749 & 0.694458 \\
+Recurrent + Conf. & Garden + Gym + Office & Garden & 0.082186 & 0.652743 \\
+U-Net & Garden & Kitchen & 0.036869 & 0.870538 \\
+Recurrent & Garden & Kitchen & 0.029394 & 0.894751 \\
+Recurrent & Garden + Gym + Office & Kitchen & 0.025123 & 0.901342 \\
+Recurrent + Conf. & Garden & Kitchen & 0.032959 & 0.878226 \\
+Recurrent + Conf. & Garden + Gym + Office & Kitchen & 0.067347 & 0.824029 \\
 \bottomrule
 \end{tabular}
 \end{table}

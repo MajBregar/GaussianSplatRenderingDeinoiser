@@ -9,13 +9,13 @@ from PIL import Image
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
 
 
-CHECKPOINT_PATH = Path("model_output_recurrent_garden_C24/autoencoder_best.pt")
-DATASET_PATH = Path("../../dataset_evaluation_kitchen_history/")
+CHECKPOINT_PATH = Path("model_output_recurrent_closed_rooms_C24/autoencoder_best.pt")
+DATASET_PATH = Path("../../dataset_evaluation_garden_history/")
 
-OUTPUT_DIR = Path("inference_vis_output")
+OUTPUT_DIR = Path("rec_conf_train_closed_rooms_eval_garden")
 
 SEQ_INDEX = 0
-INFER_FRAMES = 10
+INFER_FRAMES = 30
 
 IN_CHANNELS = 5
 OUT_CHANNELS = 3

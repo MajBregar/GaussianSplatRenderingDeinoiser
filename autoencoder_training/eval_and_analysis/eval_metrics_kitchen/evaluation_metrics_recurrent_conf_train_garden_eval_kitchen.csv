@@ -1,0 +1,2 @@
+checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,mean_rmse,mean_ssim
+model_output_recurrent_garden_C24\autoencoder_best.pt,../../dataset_evaluation_kitchen_history,86,254,0.03295925962848691,0.8782256574142636
