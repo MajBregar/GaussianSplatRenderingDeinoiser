@@ -9,7 +9,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 
 import stochastic_splatting_code from 'shaders/stochastic_splat_render.wgsl?raw';
 
-export class RenderingPipelineTemporalInferrence {
+export class RenderingPipelineTemporalInference {
     constructor({
         device,
         context,

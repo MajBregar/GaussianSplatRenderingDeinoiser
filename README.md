@@ -1,37 +1,74 @@
-# GaussianSplatRenderingDeinoiser
+# Gaussian Splat Rendering Denoiser
 
-* 2 key assumptions - static scene, only camera movement + only using post processing effects for cleanup using the outputted stochastic color and depth texture
+WebGPU pipeline for running a denoising recurrent autoencoder model on noisy stochastic Gaussian splat renders. Inference is run on the ONNX backend.
 
+A demo scene of an office environment is provided under:
 
+```text
+public/splats/office.splat
+```
 
-# setup
+## Models
 
+The project includes three ONNX-exported models in:
+
+```text
+public/models
+```
+
+### Available Models
+
+| Model | Description |
+|---|---|
+| `RecurrentDenoisingAutoencoder_C24_ClosedRooms.onnx` | Trained on 3 scenes for 200 epochs. |
+| `RecurrentDenoisingAutoencoderConfidence_C24_ClosedRooms.onnx` | Trained on 3 scenes for 200 epochs with confidence map auxiliary inputs. |
+| `RecurrentDenoisingAutoencoderConfidence_C24_FP16_ClosedRooms.onnx` | Same confidence-map model, exported for an FP16 half-precision inference pipeline. |
+
+For additional details, see the project report:
+
+```text
+report.pdf
+```
+
+## Setup
+
+```bash
 cd GaussianSplatRenderingDeinoiser
 npm install
 npm run dev
+```
 
+## Model Training Setup
 
-# notes
-- l1 dist - doesnt overpunish errors, prevents image blurring by the model
-- recurrent hidden states - encode previous frames to remove random per frame noise
-- dataset construction
-    - sample 20 frames, pause for 10, move camera, repeat -  still frames provide information about global structure to the model so it can differentiate noise
-    - pass in sequences of frames to build recurrent hidden states
+All model training scripts are located under:
 
-- potentially try charbonnier_loss
+```text
+autoencoder_training
+```
 
-- having zoomed out camera too far seems to have negative effect, maybe because scene is dominated by mostly white
+The provided `requirements.txt` reflects a local setup configuration. Adjust the package versions as needed for your own GPU setup.
 
-# try before report
-- way higher max history confidence - not good
-- train single item scenes on short dataset up close - otherwise white splotches show up
-- train final model on multiscene dataset
+## Credits
 
-- make oke lightweight model
+The architecture of the recurrent model was heavily inspired by the following paper:
 
+```bibtex
+@article{paper,
+  author = {Chaitanya, Chakravarty R. Alla and Kaplanyan, Anton S. and Schied, Christoph and Salvi, Marco and Lefohn, Aaron and Nowrouzezahrai, Derek and Aila, Timo},
+  title = {Interactive Reconstruction of Monte Carlo Image Sequences Using a Recurrent Denoising Autoencoder},
+  journal = {ACM Transactions on Graphics},
+  volume = {36},
+  number = {4},
+  articleno = {98},
+  pages = {1--12},
+  year = {2017},
+  publisher = {ACM},
+  doi = {10.1145/3072959.3073601}
+}
+```
 
-
-
-
-# TODO
-- clean up old models which i will not use (make new )
+The office scene was downloaded from SuperSplat. All credits go to the original creator.
+- Source: <https://superspl.at/scene/d152f2df>
+- Creator: `"Gunja514"` by Lee Kyumin
+- Creator profile: <https://superspl.at/user?id=qjayo>
+- License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)

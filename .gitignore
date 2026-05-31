@@ -13,13 +13,11 @@ public/splats/debug_horizontal.splat
 public/splats/debug_vertical.splat
 public/splats/debug.splat
 public/splats/train.splat
-public/models/
 splats_local
 
 public/splats/garden.splat
 public/splats/backyard.splat
 public/splats/gym.splat
-public/splats/office.splat
 public/splats/kitchen.splat
 
 papers
@@ -29,27 +27,19 @@ tmp/*
 .venv
 get_structure.ps1
 
-# Node / Vite
 node_modules/
 dist/
 .vite/
 *.local
 .env
 .env.*
-
-# Python
 .venv/
 venv/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
-
-# Generated samples / temporary files
 tmp/
 structure.txt
-
-
-# OS / editor
 .DS_Store
 Thumbs.db
 .vscode/
