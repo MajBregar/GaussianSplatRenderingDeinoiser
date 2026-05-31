@@ -39,6 +39,8 @@ For additional details, see the project report:
 report.pdf
 ```
 
+All trained model checkpoints are available at `https://drive.google.com/drive/folders/1KbpdD_-V-NknwFDElOhJkZ09CIc2mPX3?usp=drive_link`
+
 ## Setup
 
 ```bash
