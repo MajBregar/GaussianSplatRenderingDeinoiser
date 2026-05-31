@@ -1,0 +1,2 @@
+checkpoint_path,eval_dataset,checkpoint_epoch,num_frames,num_temporal_pairs,num_seq7_windows,mean_l1,mean_gradient_l1,mean_temporal_delta_l1,mean_sliding_seq7_loss
+model_output_recurrent_garden_C24\autoencoder_best.pt,../../dataset_evaluation_garden_history,86,204,203,198,0.04001334207315071,0.021394552927756428,0.038408159631593476,0.016745542608803572

@@ -86,7 +86,7 @@ scene.addChild(camera);
 //rendering setup
 const performanceTracker = new PerformanceTracker();
 
-const renderingPipeline = new RenderingPipelineDatasetGatherConfidence({
+const renderingPipeline = new RenderingPipelineModelInferrenceConfidenceFP16({
     device,
     context,
     format,

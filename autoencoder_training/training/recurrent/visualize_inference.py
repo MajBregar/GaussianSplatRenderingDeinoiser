@@ -9,15 +9,14 @@ from PIL import Image
 from RecurrentDenoisingAutoencoder import RecurrentDenoisingAutoencoder, _make_channels
 
 
-CHECKPOINT_PATH = Path("model_output_recurrent_garden_C24/autoencoder_best.pt")
+CHECKPOINT_PATH = Path("model_output_recurrent_no_conf_garden_C24/autoencoder_best.pt")
 DATASET_PATH = Path("../../dataset_evaluation_kitchen_history/")
-
-OUTPUT_DIR = Path("inference_vis_output")
+OUTPUT_DIR = Path("rec_no_conf_train_garden_eval_kitchen")
 
 SEQ_INDEX = 0
 INFER_FRAMES = 10
 
-IN_CHANNELS = 5
+IN_CHANNELS = 4
 OUT_CHANNELS = 3
 BASE = 24
 
@@ -41,16 +40,12 @@ def load_frame(seq_dir: Path, frame_idx: int) -> torch.Tensor:
         dtype=np.float32,
     ) / 255.0
 
-    depth = np.load(seq_dir / "depth" / f"{frame}.npy")
-
-    conf_path = seq_dir / "confidence" / f"{frame}.npy"
-    conf = np.load(conf_path) if conf_path.exists() else np.zeros(depth.shape, dtype=np.float32)
+    depth = np.load(seq_dir / "depth" / f"{frame}.npy").astype(np.float32)
 
     color_t = torch.from_numpy(color).permute(2, 0, 1)
     depth_t = torch.from_numpy(depth).unsqueeze(0)
-    conf_t = torch.from_numpy(conf).unsqueeze(0)
 
-    return torch.cat([color_t, depth_t, conf_t], dim=0)
+    return torch.cat([color_t, depth_t], dim=0)
 
 
 def load_target(seq_dir: Path, frame_idx: int) -> torch.Tensor:
@@ -78,9 +73,18 @@ def main():
     print(f"Device: {device}")
 
     ckpt = torch.load(CHECKPOINT_PATH, map_location=device)
+
     in_channels = ckpt.get("in_channels", IN_CHANNELS)
     out_channels = ckpt.get("out_channels", OUT_CHANNELS)
     base = ckpt.get("base_channels", BASE)
+
+    print(f"Checkpoint input channels: {in_channels}")
+
+    if in_channels != 4:
+        raise ValueError(
+            f"This script is for the no-confidence model with 4 input channels, "
+            f"but checkpoint expects {in_channels} channels."
+        )
 
     model = RecurrentDenoisingAutoencoder(
         in_channels=in_channels,
@@ -93,7 +97,6 @@ def main():
 
     print(f"Loaded checkpoint (epoch {ckpt['epoch']})")
 
-    # DATASET_PATH is now already the sequence root
     seq_root = DATASET_PATH
     seq_dirs = sorted(seq_root.glob("seq_*"))
     total = len(seq_dirs)
