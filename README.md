@@ -4,7 +4,7 @@ WebGPU pipeline for running a denoising recurrent autoencoder model on noisy sto
 
 Read the [final research report](figures_and_report/report.pdf) for the findings.
 
-A published conference paper conference is available at [ERK 2026](https://erk.fe.uni-lj.si/2026/program.php).
+A published conference paper is available at [ERK 2026](https://erk.fe.uni-lj.si/2026/program.php).
 
 <p align="center">
   <img src="figures_and_report/comparison_grid_garden.gif" alt="Model comparison on Garden scene" width="90%">
