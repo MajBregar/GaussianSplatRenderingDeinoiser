@@ -2,20 +2,18 @@
 
 WebGPU pipeline for running a denoising recurrent autoencoder model on noisy stochastic Gaussian splat renders. Inference is run on the ONNX backend.
 
+Read the [final research report](figures_and_report/report.pdf) for the findings.
+
+A published conference paper conference is available at [ERK 2026](https://erk.fe.uni-lj.si/2026/program.php).
+
 <p align="center">
-  <img src="figures/comparison_grid_garden.gif" alt="Model comparison on Garden scene" width="800">
+  <img src="figures_and_report/comparison_grid_garden.gif" alt="Model comparison on Garden scene" width="90%">
 </p>
 
 <p align="center">
-  <img src="figures/comparison_grid_kitchen.gif" alt="Model comparison on Kitchen scene" width="800">
+  <img src="figures_and_report/comparison_grid_kitchen.gif" alt="Model comparison on Kitchen scene" width="90%">
 </p>
 
-
-A demo scene of an office environment is provided under:
-
-```text
-public/splats/office.splat
-```
 
 ## Models
 
@@ -33,11 +31,6 @@ public/models
 | `RecurrentDenoisingAutoencoderConfidence_C24_ClosedRooms.onnx` | Trained on 3 scenes for 200 epochs with confidence map auxiliary inputs. |
 | `RecurrentDenoisingAutoencoderConfidence_C24_FP16_ClosedRooms.onnx` | Same confidence-map model, exported for an FP16 half-precision inference pipeline. |
 
-For additional details, see the project report:
-
-```text
-report.pdf
-```
 
 All trained model checkpoints are available at `https://drive.google.com/drive/folders/1KbpdD_-V-NknwFDElOhJkZ09CIc2mPX3?usp=drive_link`
 
@@ -48,6 +41,13 @@ cd GaussianSplatRenderingDeinoiser
 npm install
 npm run dev
 ```
+
+A demo scene of an office environment is provided under:
+
+```text
+public/splats/office.splat
+```
+
 
 ## Model Training Setup
 
